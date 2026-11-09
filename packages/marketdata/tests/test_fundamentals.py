@@ -211,6 +211,7 @@ def test_client_fundamentals_via_single_source_engine(monkeypatch):
     out = md.fundamentals([Symbol.parse("600519", market="CN")])
     assert len(out) == 1 and isinstance(out[0], Fundamentals)
     assert out[0].symbol == "600519" and out[0].pe_ttm == 28.5
+    assert out[0].source == "tencent"
 
 
 def test_client_fundamentals_no_sources_returns_empty():
