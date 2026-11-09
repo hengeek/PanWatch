@@ -2374,6 +2374,33 @@ def _m146_left_side_pe_review(conn: Connection) -> None:
         _add_column_if_missing(conn, "left_side_candidate_reviews", column, sql)
 
 
+def _m147_left_side_snapshot_counters_and_pe_observation(conn: Connection) -> None:
+    """Add fields used by current left-side status, snapshot and ranking queries.
+
+    These columns were added to the ORM after the initial left-side table rollout.
+    Existing databases keep their tables when ``create_all`` runs, so omitting this
+    migration makes the new workbench return 500 while ORM queries select the rows.
+    """
+    for table, column, sql in (
+        (
+            "left_side_ranking_snapshots",
+            "fundamentals_errors",
+            "ALTER TABLE left_side_ranking_snapshots ADD COLUMN fundamentals_errors INTEGER DEFAULT 0",
+        ),
+        (
+            "left_side_ranking_snapshots",
+            "history_errors",
+            "ALTER TABLE left_side_ranking_snapshots ADD COLUMN history_errors INTEGER DEFAULT 0",
+        ),
+        (
+            "left_side_ranking_items",
+            "pe_observed_at",
+            "ALTER TABLE left_side_ranking_items ADD COLUMN pe_observed_at TEXT DEFAULT ''",
+        ),
+    ):
+        _add_column_if_missing(conn, table, column, sql)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2421,6 +2448,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(144, "left_side_coverage_audit", _m144_left_side_coverage_audit),
     Migration(145, "left_side_pe_source", _m145_left_side_pe_source),
     Migration(146, "left_side_pe_review", _m146_left_side_pe_review),
+    Migration(147, "left_side_snapshot_counters_and_pe_observation", _m147_left_side_snapshot_counters_and_pe_observation),
 )
 
 
