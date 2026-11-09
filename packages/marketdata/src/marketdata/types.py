@@ -146,6 +146,7 @@ class Fundamentals:
     revenue_yoy: float | None = None                # 营收同比增长(%)
     net_profit_yoy: float | None = None             # 净利润同比增长(%)
     report_date: str = ""                           # 报告期(原样字符串,不做日期解析)
+    source: str = ""                                 # 实际返回该对象的 provider
     timestamp: datetime = field(default_factory=datetime.now)
 
 

@@ -5,6 +5,7 @@ export const navigation = {
     portfolio: '持仓',
     opportunities: '机会',
     paperTrading: '模拟盘',
+    leftSide: '左侧策略',
     assistant: '助手',
     alerts: '提醒',
     agents: 'Agent',

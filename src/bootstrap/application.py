@@ -45,6 +45,9 @@ from src.modules.research.api import (
     recommendations,
 )
 from src.modules.strategy.api import factors
+from src.modules.strategy.left_side import api as left_side_api
+from src.modules.strategy.left_side.rankings import recover_interrupted_snapshots as recover_left_side_snapshots
+from src.modules.strategy.left_side.workflows import recover_interrupted_reports as recover_left_side_reports
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(
@@ -168,6 +171,12 @@ app.include_router(
     dependencies=protected,
 )
 app.include_router(
+    left_side_api.router,
+    prefix="/api/strategy-lab",
+    tags=["strategy-lab"],
+    dependencies=protected,
+)
+app.include_router(
     health.router,
     prefix="/api/health",
     tags=["health"],
@@ -191,6 +200,8 @@ app.include_router(notifications_api.router, prefix="/api/notifications", tags=[
 
 app.router.on_startup.append(assistant_task_runner.recover_pending)
 app.router.on_startup.append(context_export_runner.recover_pending)
+app.router.on_startup.append(recover_left_side_snapshots)
+app.router.on_startup.append(recover_left_side_reports)
 app.router.on_shutdown.append(context_export_runner.shutdown)
 # PAT 管理(需登录):创建/列出/吊销 MCP 用的个人访问令牌
 app.include_router(

@@ -1,6 +1,6 @@
 import { Suspense, useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle, Compass } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle, Compass, LineChart } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi } from '@panwatch/api/app'
 import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
@@ -31,6 +31,7 @@ const {
   AnalysisDetailPage,
   PriceAlertsPage,
   PaperTradingPage,
+  LeftSideStrategyPage,
   EvaluationsPage,
   AssistantPage,
 } = routePages
@@ -41,6 +42,7 @@ const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: Nav
   { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
   { to: '/opportunities', icon: Sparkles, labelKey: 'opportunities' },
   { to: '/paper-trading', icon: Activity, labelKey: 'paperTrading' },
+  { to: '/strategy-lab', icon: LineChart, labelKey: 'leftSide' },
   { to: '/alerts', icon: BellRing, labelKey: 'alerts' },
   { to: '/agents', icon: Bot, labelKey: 'agents' },
   { to: '/evaluations', icon: ClipboardCheck, labelKey: 'evaluations' },
@@ -98,10 +100,10 @@ function App() {
     icon: item.icon,
     label: t(`navigation:items.${item.labelKey}`),
   }))
-  const desktopPrimaryNavItems = navItems.slice(0, 5)
-  const desktopMoreNavItems = navItems.slice(5)
-  const mobilePrimaryNavItems = navItems.slice(0, 5)
-  const mobileMoreNavItems = navItems.slice(5)
+  const desktopPrimaryNavItems = navItems.slice(0, 6)
+  const desktopMoreNavItems = navItems.slice(6)
+  const mobilePrimaryNavItems = navItems.slice(0, 6)
+  const mobileMoreNavItems = navItems.slice(6)
 
   useEffect(() => {
     appApi.version()
@@ -166,7 +168,7 @@ function App() {
             </NavLink>
 
             {/* Nav Links */}
-            <nav className="flex items-center gap-1">
+            <nav className="flex items-center gap-0.5">
               {desktopPrimaryNavItems.map(({ to, icon: Icon, label }) => {
                 const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
                 return (
@@ -185,7 +187,7 @@ function App() {
                       }`}
                     />
                     <span
-                      className={`relative px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all flex items-center gap-1.5 ${
+                      className={`relative px-2 md:px-2.5 xl:px-3.5 py-2 rounded-xl text-[12px] xl:text-[13px] font-medium transition-all flex items-center gap-1.5 ${
                         isActive
                           ? 'text-foreground'
                           : 'text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -268,7 +270,7 @@ function App() {
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-card border-t border-border px-2 pb-[env(safe-area-inset-bottom)]">
-        <div className="flex items-center justify-around h-14">
+        <div className="flex items-center h-14">
           {mobilePrimaryNavItems.map(({ to, icon: Icon, label }) => {
             const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
             return (
@@ -277,14 +279,14 @@ function App() {
                 to={to}
                 onMouseEnter={() => preloadRoute(to)}
                 onFocus={() => preloadRoute(to)}
-                className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-xl transition-all min-w-[56px] ${
+                className={`flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1.5 rounded-xl transition-all ${
                   isActive
                     ? 'text-primary bg-primary/8 ring-1 ring-primary/15'
                     : 'text-muted-foreground hover:bg-accent/30'
                 }`}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{label}</span>
+                <span className="whitespace-nowrap text-[9px] font-medium min-[360px]:text-[10px]">{label}</span>
               </NavLink>
             )
           })}
@@ -309,6 +311,7 @@ function App() {
               <Route path="/evaluations" element={<EvaluationsPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/paper-trading" element={<PaperTradingPage />} />
+              <Route path="/strategy-lab" element={<LeftSideStrategyPage />} />
               <Route path="/alerts" element={<PriceAlertsPage />} />
               <Route path="/assistant" element={<AssistantPage />} />
               <Route path="/assistant/:conversationId" element={<AssistantPage />} />
