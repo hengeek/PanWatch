@@ -45,6 +45,7 @@ swiftc \
   -O -swift-version 5 -target "$ARCH-apple-macosx12.0" \
   "$SCRIPT_DIR/PanWatch/main.swift" \
   "$SCRIPT_DIR/PanWatch/AppDelegate.swift" \
+  "$SCRIPT_DIR/PanWatch/DesktopResourceSchemeHandler.swift" \
   "$SCRIPT_DIR/PanWatch/APIResponse.swift" \
   "$SCRIPT_DIR/PanWatch/DesktopRoutePolicy.swift" \
   "$SCRIPT_DIR/PanWatch/KeychainSessionStore.swift" \

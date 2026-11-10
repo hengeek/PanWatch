@@ -281,6 +281,7 @@ export default function DesktopApp() {
       const privacyChange = (event: Event) => setPrivacy((event as CustomEvent<{ hidden: boolean }>).detail.hidden)
       window.addEventListener('panwatch:snapshot', receive)
       window.addEventListener('panwatch:privacy', privacyChange)
+      void desktopApi.miniReady().catch(() => undefined)
       desktopApi.config().then(next => setMiniSnapshot(current => current ?? ({ privacy: next.privacy, updated: '', rows: [] }))).catch(() => undefined)
       return () => { window.removeEventListener('panwatch:snapshot', receive); window.removeEventListener('panwatch:privacy', privacyChange) }
     }
@@ -843,7 +844,7 @@ function MiniWindow({ snapshot, privacy, tr, onOpenMain, onSelect, onTogglePriva
   const hidden = privacy || snapshot?.privacy
   return <main className="mini-shell"><header className="mini-header"><div><span className="mark"><TrendingUp size={14}/></span><b>PanWatch</b><small>{tr('nav.mini')}</small></div><span><button className="icon-button" aria-label={hidden ? tr('privacy.show') : tr('privacy.hide')} onClick={onTogglePrivacy}>{hidden ? <EyeOff size={14}/> : <Eye size={14}/>}</button><button className="icon-button" aria-label={tr('nav.openMain')} onClick={onOpenMain}><ExternalLink size={14}/></button></span></header>
     {!snapshot?.rows.length ? <div className="mini-empty">{tr('mini.waiting')}</div> : <div className="mini-stock-list">{snapshot.rows.map(row => <button key={row.key} onClick={() => onSelect(row.key)}><span><b>{row.name}</b><small>{row.market}:{row.symbol}</small></span><span className="mini-values"><b>{hidden ? '••••' : numberText(row.price, document.documentElement.lang || navigator.language)}</b><small className={tone(row.change)}>{signedPercent(row.change, document.documentElement.lang || navigator.language)}</small></span></button>)}</div>}
-    <footer className="mini-footer"><span>{snapshot?.updated ? tr('status.updated', { time: snapshot.updated }) : tr('mini.waiting')}</span><span>{tr('mini.source')}</span></footer>
+    <footer className="mini-footer"><span>{snapshot?.updated ? tr('status.updated', { time: snapshot.updated }) : tr('mini.waiting')}</span><span>{tr('mini.source', { time: snapshot?.updated ?? '—' })}</span></footer>
   </main>
 }
 

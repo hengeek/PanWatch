@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     private let defaults = UserDefaults.standard
     private lazy var session: URLSession = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if webView === miniWeb { broadcastSnapshot() }
+    }
+
     override init() {
         server = defaults.string(forKey: "server") ?? "http://127.0.0.1:8000"
         privacyMode = defaults.bool(forKey: "privacy")
@@ -89,7 +93,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
-              message.frameInfo.request.url?.isFileURL == true,
               let input = message.body as? [String: Any],
               let requestID = input["id"] as? String,
               let path = input["path"] as? String else { return }
@@ -123,6 +126,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             reply(requestID, to: webView, value: ["visible": miniWindow?.isVisible ?? false])
             return
         }
+        if path == "native:mini-ready" {
+            broadcastSnapshot()
+            reply(requestID, to: webView, value: ["ready": true])
+            return
+        }
         if path == "native:notifications" {
             updateNotificationPermission(input["body"] as? [String: Any] ?? [:], requestID: requestID, webView: webView)
             return
@@ -148,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             if let data = try? JSONSerialization.data(withJSONObject: ["key": key]),
                let json = String(data: data, encoding: .utf8) {
                 let encoded = Data(json.utf8).base64EncodedString()
-                mainWeb.evaluateJavaScript("window.dispatchEvent(new CustomEvent('panwatch:select-stock',{detail:JSON.parse(atob('\(encoded)'))}))", completionHandler: nil)
+                mainWeb.evaluateJavaScript("window.dispatchEvent(new CustomEvent('panwatch:select-stock',{detail:window.__panWatchDecode('\(encoded)')}))", completionHandler: nil)
             }
             reply(requestID, to: webView, value: ["selected": true])
             return
@@ -218,11 +226,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     private func makeWebConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "api")
+        if let document = Bundle.main.url(forResource: "desktop", withExtension: "html", subdirectory: "Desktop") {
+            configuration.setURLSchemeHandler(
+                DesktopResourceSchemeHandler(root: document.deletingLastPathComponent()),
+                forURLScheme: DesktopResourceSchemeHandler.scheme
+            )
+        }
         let source = """
         (() => {
-          const requestPrefix = crypto.randomUUID();
+          // `crypto.randomUUID()` is limited to secure contexts and is not
+          // available in every WKWebView version supported by macOS 12.
+          // The request IDs are only local correlation keys, so a non-crypto
+          // fallback is sufficient for older WebKit runtimes.
+          const requestPrefix = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
           let nextId = 0;
           const pending = new Map();
+          window.__panWatchDecode = encoded => {
+            const binary = atob(encoded);
+            const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+            return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+          };
           window.receive = ({id, value, error}) => {
             const task = pending.get(id); if (!task) return;
             pending.delete(id); task.cleanup?.(); error ? task.reject(new Error(error)) : task.resolve(value);
@@ -327,20 +350,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     }
 
     private func loadWebView(_ web: WKWebView, mode: String) {
-        guard let resource = Bundle.main.url(forResource: "desktop", withExtension: "html", subdirectory: "Desktop"),
-              var components = URLComponents(url: resource, resolvingAgainstBaseURL: false) else { return }
+        guard Bundle.main.url(forResource: "desktop", withExtension: "html", subdirectory: "Desktop") != nil else { return }
+        var components = URLComponents()
+        components.scheme = DesktopResourceSchemeHandler.scheme
+        components.host = "desktop"
+        components.path = "/desktop.html"
         components.queryItems = [URLQueryItem(name: "mode", value: mode)]
         guard let url = components.url else { return }
-        web.loadFileURL(url, allowingReadAccessTo: resource.deletingLastPathComponent())
+        web.load(URLRequest(url: url))
     }
 
     private func isBundledPage(_ url: URL?) -> Bool {
-        guard let url, url.isFileURL else { return false }
-        let expected = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Desktop").standardizedFileURL.path
-        return url.standardizedFileURL.path.hasPrefix(expected + "/")
+        DesktopResourceSchemeHandler.isDesktopDocument(url)
     }
 
     private func showMainWindow() {
+        miniWindow?.orderOut(nil)
         mainWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -686,7 +711,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         guard let bytes = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: bytes, encoding: .utf8) else { return }
         let encoded = Data(json.utf8).base64EncodedString()
-        webView.evaluateJavaScript("window.receive(JSON.parse(atob('\(encoded)')))", completionHandler: nil)
+        webView.evaluateJavaScript("window.receive(window.__panWatchDecode('\(encoded)'))", completionHandler: nil)
     }
 
     private func broadcastSnapshot() {
@@ -694,7 +719,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
               let bytes = try? JSONSerialization.data(withJSONObject: snapshot),
               let json = String(data: bytes, encoding: .utf8) else { return }
         let encoded = Data(json.utf8).base64EncodedString()
-        miniWeb?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('panwatch:snapshot',{detail:JSON.parse(atob('\(encoded)'))}))", completionHandler: nil)
+        miniWeb?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('panwatch:snapshot',{detail:window.__panWatchDecode('\(encoded)')}))", completionHandler: nil)
     }
 
     private func updateMenuSummary(_ values: [String: Any]) {

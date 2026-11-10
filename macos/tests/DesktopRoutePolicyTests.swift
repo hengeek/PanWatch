@@ -5,6 +5,8 @@ struct DesktopRoutePolicyTests {
     static func main() {
         precondition(DesktopRoutePolicy.allows("/portfolio/summary?include_quotes=true&refresh_exchange_rates=true", method: "GET"))
         precondition(DesktopRoutePolicy.allows("/stocks/reorder", method: "PUT"))
+        precondition(DesktopRoutePolicy.allows("/quotes/batch", method: "POST"))
+        precondition(!DesktopRoutePolicy.allows("/quotes/batch", method: "GET"))
         precondition(DesktopRoutePolicy.allows("/watch-groups/3?version=2", method: "DELETE"))
         precondition(DesktopRoutePolicy.allows("/watch-groups/3/members", method: "PUT"))
         precondition(DesktopRoutePolicy.allows("/price-alerts/12/toggle", method: "POST"))

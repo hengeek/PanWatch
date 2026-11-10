@@ -15,6 +15,7 @@ export const desktopApi = {
   logout: () => bridge().request('native:logout'),
   preferences: (patch: Partial<DesktopConfig>) => bridge().request('native:preferences', patch),
   nativeWindow: (mode: 'main' | 'mini') => bridge().request(`native:window:${mode}`),
+  miniReady: () => bridge().request('native:mini-ready'),
   enableNotifications: (enabled: boolean) => bridge().request('native:notifications', { enabled }),
   setMenuSummary: (value: { title: string; subtitle: string }) => bridge().request('native:menu-summary', value),
   publishSnapshot: (value: Record<string, unknown>) => bridge().request('native:snapshot', value),
@@ -23,7 +24,7 @@ export const desktopApi = {
   reorderStocks: (items: Array<{ id: number; sort_order: number }>) => bridge().request('/stocks/reorder', { items }, undefined, 'PUT') as Promise<{ updated: number }>,
   portfolio: () => bridge().request('/portfolio/summary?include_quotes=true&refresh_exchange_rates=true') as Promise<Portfolio>,
   quotes: (items: Array<{ symbol: string; market: string }>) =>
-    bridge().request('/quotes/batch', { items }) as Promise<Quote[]>,
+    bridge().request('/quotes/batch', { items }, undefined, 'POST') as Promise<Quote[]>,
   markets: () => bridge().request('/stocks/markets/status') as Promise<Market[]>,
   klines: (symbol: string, market: string, days = 20, signal?: AbortSignal) => bridge().request('/klines/' + encodeURIComponent(symbol) + `?market=${encodeURIComponent(market)}&days=${days}&interval=1d`, undefined, undefined, 'GET', { signal }) as Promise<KlineResponse>,
   openWeb: (route: '/' | '/portfolio' | '/alerts' | '/assistant' | '/opportunities' | '/history') => bridge().request(`open-web:${route}`),
