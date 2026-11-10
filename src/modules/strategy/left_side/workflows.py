@@ -355,14 +355,14 @@ def list_reviews(db, snapshot_id: str, offset: int = 0, limit: int = 30, status:
 
 
 def _boards_payload(db, snapshot: LeftSideRankingSnapshot) -> tuple[list[dict[str, Any]], list[str]]:
-    from src.modules.strategy.left_side.rankings import BOARDS
+    from src.modules.strategy.left_side.rankings import BOARDS, visible_ranking_query
 
+    eligible_query, _ = visible_ranking_query(db, snapshot.id)
     merged: dict[str, dict[str, Any]] = {}
     for board, (field, _) in BOARDS.items():
         col = getattr(LeftSideRankingItem, field)
         rows = (
-            db.query(LeftSideRankingItem)
-            .filter(LeftSideRankingItem.snapshot_id == snapshot.id, col.is_not(None))
+            eligible_query.filter(col.is_not(None))
             .order_by(col.desc(), LeftSideRankingItem.pe_ttm.asc(), LeftSideRankingItem.symbol.asc())
             .limit(30)
             .all()
@@ -617,17 +617,47 @@ def serialize_report(row: LeftSideAIReport) -> dict[str, Any]:
     }
 
 
+def _report_with_current_risks(db, row, candidate_names=None):
+    from src.modules.strategy.left_side.rankings import visible_ranking_query
+
+    import copy
+    result = copy.deepcopy(serialize_report(row))
+    if candidate_names is None:
+        candidate_names = dict(db.query(LeftSideRankingItem.symbol, LeftSideRankingItem.name).filter_by(snapshot_id=row.snapshot_id).all())
+    for score in result["report"].get("candidate_scores", []):
+        if isinstance(score, dict):
+            score["name"] = candidate_names.get(str(score.get("symbol"))) or score.get("name") or ""
+    _, exclusions = visible_ranking_query(db, row.snapshot_id)
+    symbols = set(row.input_symbols or [])
+    scores = result["report"].get("candidate_scores") or []
+    symbols.update(str(score.get("symbol")) for score in scores if isinstance(score, dict))
+    affected = [entry for entry in exclusions if entry["symbol"] in symbols]
+    if affected:
+        blocked = {entry["symbol"] for entry in affected}
+        result["validation_status"] = "stale_risk"
+        result["validation_errors"] = [*result["validation_errors"], "候选新增已知风险，旧报告建议已失效，请重新生成：" + "、".join(sorted(blocked))]
+        result["report"]["candidate_scores"] = [score for score in scores if not isinstance(score, dict) or str(score.get("symbol")) not in blocked]
+        result["report"]["today_buy_list"] = []
+        result["report"]["tomorrow_watch"] = []
+        result["report"]["risk_exclusions"] = affected
+    return result
+
+
 def list_reports(db, snapshot_id: str) -> list[dict[str, Any]]:
-    return [serialize_report(row) for row in db.query(LeftSideAIReport).filter_by(snapshot_id=snapshot_id).order_by(LeftSideAIReport.created_at.desc()).limit(50)]
+    return [_report_with_current_risks(db, row) for row in db.query(LeftSideAIReport).filter_by(snapshot_id=snapshot_id).order_by(LeftSideAIReport.created_at.desc()).limit(50)]
 
 
 def get_report(db, report_id: str) -> dict[str, Any] | None:
     row = db.get(LeftSideAIReport, report_id)
-    return serialize_report(row) if row else None
+    return _report_with_current_risks(db, row) if row else None
 
 
 def _review_gate(db, snapshot_id: str, symbol: str) -> tuple[LeftSideCandidateReview, LeftSideRankingItem]:
     snapshot, item = _candidate(db, snapshot_id, symbol)
+    from src.modules.strategy.left_side.rankings import visible_ranking_query
+    _, exclusions = visible_ranking_query(db, snapshot_id)
+    if any(entry["symbol"] == symbol for entry in exclusions):
+        raise ValueError("该证券存在未解除的已知风险，不能建立计划")
     review = db.query(LeftSideCandidateReview).filter_by(snapshot_id=snapshot_id, symbol=symbol).first()
     if not review:
         raise ValueError("该股票尚未建立人工复核记录")
@@ -655,7 +685,8 @@ def _review_gate(db, snapshot_id: str, symbol: str) -> tuple[LeftSideCandidateRe
         raise ValueError("重大事件证据缺失或超过90天")
     if review.financial_status != "passed" or review.event_status != "clear" or quality_score(review.financial_data or {})[0] is None:
         raise ValueError("财务质量或重大事件核验未完整通过")
-    if re.match(r"^(?:\*?ST|S\*?ST)", re.sub(r"\s+", "", item.name or "").upper()) or "退市" in item.name:
+    from src.modules.strategy.left_side.rankings import _is_name_excluded
+    if _is_name_excluded(item.name):
         raise ValueError("ST/退市名称硬过滤不能被人工复核豁免")
     return review, item
 

@@ -42,6 +42,8 @@ export const leftSide = {
   previous: '上一页',
   next: '下一页',
   emptyBoard: '当前榜单暂无足够样本',
+  riskFilterHint: '当前列表为待复核观察候选，不是买入推荐。已知证券、财务及事件风险在排序和取前30名前统一排除；原始快照保留供追溯。',
+  riskFilterCount: '已排除 {{count}} 只已知风险股票（查看原因）',
   emptyBoardHint: 'PE_TTM 未通过或历史日线不足的股票不会进入该榜。',
   failed: '本次刷新失败',
   loading: '正在读取观察榜…',

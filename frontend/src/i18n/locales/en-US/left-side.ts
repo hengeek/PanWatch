@@ -45,6 +45,8 @@ export const leftSide = {
   previous: 'Previous',
   next: 'Next',
   emptyBoard: 'Not enough valid data for this board',
+  riskFilterHint: 'These are research candidates awaiting review, not buy recommendations. Known security, financial and event risks are excluded before sorting and selecting the top 30; original snapshots are retained for audit.',
+  riskFilterCount: '{{count}} known-risk securities excluded (show reasons)',
   emptyBoardHint: 'Stocks that fail PE_TTM or do not have enough daily bars are excluded.',
   failed: 'Refresh failed',
   loading: 'Loading observation rankings…',

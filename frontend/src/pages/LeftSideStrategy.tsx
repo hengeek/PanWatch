@@ -44,6 +44,7 @@ export default function LeftSideStrategyPage() {
   const [offset, setOffset] = useState(0)
   const [items, setItems] = useState<LeftSideRankingItem[]>([])
   const [total, setTotal] = useState(0)
+  const [riskExclusions, setRiskExclusions] = useState<Array<{ symbol: string; name: string; reasons: string[] }>>([])
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [loadingRows, setLoadingRows] = useState(false)
@@ -85,6 +86,8 @@ export default function LeftSideStrategyPage() {
         if (!active) return
         setItems(result.items || [])
         setTotal(result.total || 0)
+        setRiskExclusions(result.risk_exclusions || [])
+        setSelectedCandidate(current => current ? (result.items || []).find(item => item.symbol === current.symbol) || null : null)
       })
       .catch(error => {
         if (!active) return
@@ -268,6 +271,13 @@ export default function LeftSideStrategyPage() {
           {activeSnapshot && <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400"><Clock3 className="h-3.5 w-3.5" />{tr('pending')}</div>}
         </div>
 
+        <div className="px-4 pb-4 text-xs text-muted-foreground sm:px-6">
+          <p>{tr('riskFilterHint')}</p>
+          {riskExclusions.length > 0 && <details className="mt-2 rounded-lg border border-border/60 p-3">
+            <summary className="cursor-pointer">{tr('riskFilterCount', { count: riskExclusions.length })}</summary>
+            <ul className="mt-2 space-y-1">{riskExclusions.map(item => <li key={item.symbol}>{item.symbol} {item.name} · {item.reasons.join('；')}</li>)}</ul>
+          </details>}
+        </div>
         {!status?.latest_completed && !isRunning ? (
           <div className="mx-4 mb-5 rounded-2xl border border-dashed border-border p-8 text-center sm:mx-6">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Activity className="h-5 w-5" /></div>
