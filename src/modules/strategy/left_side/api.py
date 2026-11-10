@@ -52,6 +52,10 @@ class ReviewUpdate(BaseModel):
     review_note: str | None = None
 
 
+class ReportGenerateRequest(BaseModel):
+    symbols: list[str] = Field(min_length=1, max_length=30)
+
+
 class PlanCreate(BaseModel):
     snapshot_id: str
     symbol: str
@@ -323,9 +327,9 @@ def get_reports(snapshot_id: str = Query(..., min_length=1), db: Session = Depen
 
 
 @router.post("/reports/generate")
-def generate_report(snapshot_id: str = Query(..., min_length=1), db: Session = Depends(get_db)):
+def generate_report(snapshot_id: str = Query(..., min_length=1), body: ReportGenerateRequest | None = None, db: Session = Depends(get_db)):
     try:
-        return workflows.generate_ai_report(snapshot_id)
+        return workflows.generate_ai_report(snapshot_id, body.symbols if body else None)
     except ValueError as exc:
         raise api_error(409, "left_side_report_input_invalid", str(exc))
 

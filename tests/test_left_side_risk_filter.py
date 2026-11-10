@@ -86,3 +86,22 @@ def test_sourced_financial_loss_filters_pending_review_without_manual_rejection(
         review.financial_data={**review.financial_data,'announcement_at':'2099-04-30'};db.commit()
         assert rankings.visible_ranking_query(db,'financial')[0].count()==1
     engine.dispose()
+
+
+def test_selected_thirty_scope_preserves_selection_order_and_rejects_filtered_or_foreign_symbols():
+    engine=create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(LeftSideRankingSnapshot(id='selected',status='partial',signal_date='2026-11-09'));db.flush()
+        for i in range(35):
+            db.add(LeftSideRankingItem(snapshot_id='selected',symbol=f'{i:06}',name='萃华退' if i==0 else f'公司{i}',signal_date='2026-11-09',signal_close=10,pe_ttm=10,pe_source='tencent',low_composite=100-i))
+        db.commit()
+        chosen=[f'{i:06}' for i in range(34,4,-1)]
+        rows,symbols=workflows._boards_payload(db,db.get(LeftSideRankingSnapshot,'selected'),chosen)
+        assert len(rows)==30
+        assert symbols==chosen
+        assert [x['symbol'] for x in rows]==chosen
+        for invalid in ([],['000000'],['999999'],['000001','000001'],[f'{i:06}' for i in range(1,32)]):
+            with pytest.raises(ValueError):
+                workflows._boards_payload(db,db.get(LeftSideRankingSnapshot,'selected'),invalid)
+    engine.dispose()

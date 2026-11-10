@@ -155,6 +155,38 @@ def test_failover_param_strip_retry_same_model():
     assert fc.used_model_label == "svc/m1"
 
 
+def test_failover_json_mode_retries_without_optional_response_format():
+    clear_ai_failover_state()
+
+    class JsonModeClient(_FakeClient):
+        def __init__(self):
+            super().__init__("m1")
+            self.response_formats = []
+            self.max_token_limits = []
+
+        async def chat_multi(self, messages, temperature=0.4, max_tokens=None, response_format=None):
+            self.temps.append(temperature)
+            self.response_formats.append(response_format)
+            self.max_token_limits.append(max_tokens)
+            self.calls += 1
+            if response_format is not None:
+                raise _http_err(BadRequestError, 400, "response_format is not supported")
+            return "{\"ok\":true}"
+
+    client = JsonModeClient()
+    failover = FailoverAIClient([(client, "svc/m1")])
+    result = asyncio.run(failover.chat_multi(
+        [{"role": "user", "content": "return JSON"}],
+        max_tokens=4000,
+        response_format={"type": "json_object"},
+    ))
+
+    assert result == "{\"ok\":true}"
+    assert client.calls == 2
+    assert client.response_formats == [{"type": "json_object"}, None]
+    assert client.max_token_limits == [4000, None]
+
+
 def test_failover_switch_to_next_and_cooldown():
     """主模型 5xx：降级下一候选，失败候选进冷却，后续调用直接跳过"""
     clear_ai_failover_state()
