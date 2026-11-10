@@ -35,6 +35,7 @@ from src.modules.market.api import (
     price_alerts,
     quotes,
     stocks,
+    watch_groups,
 )
 from src.modules.paper_trading.api import paper_trading
 from src.modules.portfolio.api import accounts, dashboard, history
@@ -75,6 +76,9 @@ protected = [Depends(get_current_user)]
 app.include_router(onboarding.router, prefix="/api/onboarding", tags=["onboarding"], dependencies=protected)
 app.include_router(
     stocks.router, prefix="/api/stocks", tags=["stocks"], dependencies=protected
+)
+app.include_router(
+    watch_groups.router, prefix="/api/watch-groups", tags=["watch-groups"], dependencies=protected
 )
 app.include_router(
     quotes.router, prefix="/api/quotes", tags=["quotes"], dependencies=protected

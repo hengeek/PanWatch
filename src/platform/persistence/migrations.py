@@ -2401,6 +2401,31 @@ def _m147_left_side_snapshot_counters_and_pe_observation(conn: Connection) -> No
         _add_column_if_missing(conn, table, column, sql)
 
 
+def _m148_watch_groups(conn: Connection) -> None:
+    """Create synchronized user watch groups and their stock membership rows."""
+    conn.execute(text("""
+CREATE TABLE IF NOT EXISTS watch_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name VARCHAR(40) NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""))
+    conn.execute(text("""
+CREATE TABLE IF NOT EXISTS watch_group_members (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES watch_groups(id) ON DELETE CASCADE,
+  stock_id INTEGER NOT NULL REFERENCES stocks(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT uq_watch_group_stock UNIQUE (group_id, stock_id)
+)
+"""))
+    _create_index_if_missing(conn, "ix_watch_groups_sort", "CREATE INDEX ix_watch_groups_sort ON watch_groups(sort_order, id)")
+    _create_index_if_missing(conn, "ix_watch_group_members_stock", "CREATE INDEX ix_watch_group_members_stock ON watch_group_members(stock_id)")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2449,6 +2474,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(145, "left_side_pe_source", _m145_left_side_pe_source),
     Migration(146, "left_side_pe_review", _m146_left_side_pe_review),
     Migration(147, "left_side_snapshot_counters_and_pe_observation", _m147_left_side_snapshot_counters_and_pe_observation),
+    Migration(148, "watch_groups", _m148_watch_groups),
 )
 
 
