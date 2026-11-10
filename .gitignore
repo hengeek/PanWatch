@@ -31,3 +31,7 @@ CLAUDE.md
 docs/superpowers/
 .superpowers/
 .worktrees/
+
+# PanWatch desktop build artifacts
+frontend/dist-desktop/
+macos/build/
