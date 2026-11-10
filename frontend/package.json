@@ -13,6 +13,7 @@
     "check:market-colors": "node scripts/check-market-colors.mjs",
     "dev": "vite",
     "build": "node scripts/check-ui-primitives.mjs && node scripts/check-timezones.mjs && tsc -b && vite build",
+    "build:desktop": "tsc -b && vite build --config vite.desktop.config.ts",
     "test": "vitest",
     "preview": "vite preview",
     "check:ui": "node scripts/check-ui-primitives.mjs",

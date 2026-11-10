@@ -169,7 +169,29 @@ export interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number
 }
 
+export interface PanWatchDesktopBridge {
+  request(path: string, body?: unknown, server?: string, method?: string, options?: { signal?: AbortSignal; timeoutMs?: number }): Promise<unknown>
+  configurePrivacy?(hidden: boolean): void
+}
+
+declare global {
+  interface Window { panWatchDesktop?: PanWatchDesktopBridge }
+}
+
 export async function fetchAPI<T>(path: string, options?: ApiRequestOptions): Promise<T> {
+  if (typeof window !== 'undefined' && window.panWatchDesktop) {
+    let body: unknown
+    if (options?.body) {
+      try { body = JSON.parse(String(options.body)) } catch { body = options.body }
+    }
+    return await window.panWatchDesktop.request(
+      path,
+      body,
+      undefined,
+      options?.method || 'GET',
+      { signal: options?.signal || undefined, timeoutMs: options?.timeoutMs },
+    ) as T
+  }
   const headers: Record<string, string> = {}
 
   const token = getToken()

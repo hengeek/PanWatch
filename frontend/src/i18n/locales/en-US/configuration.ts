@@ -388,6 +388,13 @@ export const configuration = {
     quoteStatus: { closed: 'Market closed today; no daily change', pre_market: 'Market has not opened; no daily change', stale: 'Today’s quote has not updated', missing: 'Quote unavailable', unknown: 'Market status unknown', asOf: 'Quote date: {{date}}' },
     calendar: { close: 'Close trading calendar', localDate: 'Local {{date}} {{time}}', nextDay: 'Next day {{time}}', previousDay: 'Previous day {{time}}', statusRule: 'Status uses each market’s local date: closed on non-trading days, market closed after a trading session.', open: 'View all market calendars', title: 'Trading calendar · Next 14 days', nextOpen: 'Next open', displayTimezone: 'Times shown in {{timezone}}', beijing: 'Beijing time', date: 'Trade date', pending: 'Calendar pending', loading: 'Loading trading calendar…', error: 'Could not load trading calendar', retry: 'Retry', source: 'Published exchange calendar · Trade dates use each market’s local date', reasons: { trading: 'Trading day', weekend: 'Weekend', holiday: 'Exchange holiday', early_close: 'Early close', unpublished: 'Calendar pending' } },
     marketStatus: { trading: 'Open', pre_market: 'Pre-market', break: 'Midday break', after_hours: 'Closed', closed: 'Closed', unknown: 'Calendar pending' },
+    watchGroups: {
+      title: 'Watch groups', description: 'Groups and member order are shared by the web app and PanWatch Mac.', newGroup: 'New group', create: 'Create group', groupName: 'Group name', addStock: 'Add a watchlist stock…', noStocks: 'No watchlist stocks available',
+      moveUp: 'Move {{name}} up', moveDown: 'Move {{name}} down', rename: 'Rename {{name}}', delete: 'Delete {{name}}', removeMember: 'Remove {{name}} from {{group}}',
+      empty: 'No custom groups yet.', emptyMembers: 'This group has no stocks yet', loading: 'Loading groups…', save: 'Save', cancel: 'Cancel',
+      deleteConfirm: 'Delete “{{name}}”? Stocks will remain in the watchlist.', created: 'Group created and synced to desktop', renamed: 'Group name updated', deleted: 'Group deleted; stocks and positions are unchanged',
+      loadFailed: 'Could not load watch groups', createFailed: 'Could not create the group', renameFailed: 'Could not rename the group. Refresh and try again.', deleteFailed: 'Could not delete the group. Refresh and try again.', membersFailed: 'Could not sync group members. Refresh and try again.', orderFailed: 'Could not save the group order. Refresh and try again.',
+    },
     messages: {
       agent: 'Agent',
       agentCount: '{{count}} Agents',

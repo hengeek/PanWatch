@@ -385,6 +385,13 @@ export const configuration = {
     quoteStatus: { closed: '今日休市，暂无今日涨跌', pre_market: '尚未开盘，暂无今日涨跌', stale: '今日行情尚未更新', missing: '暂无行情', unknown: '市场状态未知', asOf: '行情日期：{{date}}' },
     calendar: { close: '关闭交易日历', localDate: '当地 {{date}} {{time}}', nextDay: '次日 {{time}}', previousDay: '前日 {{time}}', statusRule: '状态按市场当地日期判断：非交易日为休市，当日交易结束后为已收盘。', open: '查看各市场交易日历', title: '交易日历 · 未来14天', nextOpen: '下次开盘', displayTimezone: '时间已换算为{{timezone}}', beijing: '北京时间', date: '交易日期', pending: '日历待更新', loading: '正在读取交易日历…', error: '交易日历读取失败', retry: '重试', source: '交易所公布日历 · 交易日期按各市场当地日期', reasons: { trading: '交易日', weekend: '周末休市', holiday: '交易所休市', early_close: '半日市', unpublished: '日历待更新' } },
     marketStatus: { trading: '交易中', pre_market: '盘前', break: '午间休市', after_hours: '已收盘', closed: '休市', unknown: '日历待更新' },
+    watchGroups: {
+      title: '关注分组', description: '网页和 PanWatch Mac 共用同一份关注分组与成员顺序。', newGroup: '新建分组', create: '创建分组', groupName: '分组名称', addStock: '添加自选股…', noStocks: '没有可添加的自选股',
+      moveUp: '上移{{name}}', moveDown: '下移{{name}}', rename: '重命名{{name}}', delete: '删除{{name}}', removeMember: '从{{group}}移除{{name}}',
+      empty: '还没有自定义分组。', emptyMembers: '这个分组还没有股票', loading: '正在读取分组…', save: '保存', cancel: '取消',
+      deleteConfirm: '删除“{{name}}”？股票仍会保留在自选列表中。', created: '分组已创建并同步到桌面端', renamed: '分组名称已更新', deleted: '分组已删除，股票和持仓未受影响',
+      loadFailed: '读取关注分组失败', createFailed: '创建失败', renameFailed: '改名失败，请刷新后重试', deleteFailed: '删除失败，请刷新后重试', membersFailed: '成员同步失败，请刷新后重试', orderFailed: '顺序保存失败，请刷新后重试',
+    },
     messages: {
       agent: 'Agent',
       agentCount: '{{count}} 个 Agent',

@@ -1473,3 +1473,41 @@ class MCPCallLog(Base):
     duration_ms = Column(Integer, default=0)
     client_ip = Column(String, nullable=True)
     called_at = Column(DateTime, server_default=func.now())
+
+
+class WatchGroup(Base):
+    """A synchronized custom watchlist group shared by web and desktop."""
+
+    __tablename__ = "watch_groups"
+    __table_args__ = (Index("ix_watch_groups_sort", "sort_order", "id"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(40), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    members = relationship(
+        "WatchGroupMember", back_populates="group", cascade="all, delete-orphan",
+        order_by="WatchGroupMember.sort_order, WatchGroupMember.id",
+    )
+
+
+class WatchGroupMember(Base):
+    """A stock membership row for one custom watchlist group."""
+
+    __tablename__ = "watch_group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "stock_id", name="uq_watch_group_stock"),
+        Index("ix_watch_group_members_stock", "stock_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("watch_groups.id", ondelete="CASCADE"), nullable=False)
+    stock_id = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    group = relationship("WatchGroup", back_populates="members")
+    stock = relationship("Stock")
+
+
+Index("ux_watch_groups_name_ci", func.lower(WatchGroup.__table__.c.name), unique=True)

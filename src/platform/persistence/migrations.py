@@ -2238,6 +2238,32 @@ def _m139_retire_session_legacy(conn: Connection) -> None:
                      {"id": identity, "config": json.dumps(config, ensure_ascii=False)})
 
 
+def _m148_watch_groups(conn: Connection) -> None:
+    """Create synchronized custom watch groups and stock memberships."""
+    conn.execute(text("""
+CREATE TABLE IF NOT EXISTS watch_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name VARCHAR(40) NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""))
+    conn.execute(text("""
+CREATE TABLE IF NOT EXISTS watch_group_members (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES watch_groups(id) ON DELETE CASCADE,
+  stock_id INTEGER NOT NULL REFERENCES stocks(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT uq_watch_group_stock UNIQUE (group_id, stock_id)
+)
+"""))
+    _create_index_if_missing(conn, "ix_watch_groups_sort", "CREATE INDEX ix_watch_groups_sort ON watch_groups(sort_order, id)")
+    _create_index_if_missing(conn, "ix_watch_group_members_stock", "CREATE INDEX ix_watch_group_members_stock ON watch_group_members(stock_id)")
+    _create_index_if_missing(conn, "ux_watch_groups_name_ci", "CREATE UNIQUE INDEX ux_watch_groups_name_ci ON watch_groups(lower(name))")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2278,6 +2304,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(137, "stock_asset_type", _m137_stock_asset_type),
     Migration(138, "investment_research_delivery", _m138_investment_research),
     Migration(139, "retire_session_legacy", _m139_retire_session_legacy),
+    Migration(148, "watch_groups", _m148_watch_groups),
 )
 
 

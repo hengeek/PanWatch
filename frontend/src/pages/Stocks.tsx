@@ -1,7 +1,7 @@
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
+import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, FolderKanban } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { klinesApi } from '@panwatch/api/klines'
 import { useLocalStorage } from '@/lib/utils'
@@ -41,6 +41,7 @@ import { AccountDialog } from '@/components/portfolio/AccountDialog'
 import { NewsDialog } from '@/components/portfolio/NewsDialog'
 import { PositionDialog } from '@/components/portfolio/PositionDialog'
 import { useQuoteRefresh } from '@/hooks/useQuoteRefresh'
+import WatchGroupsManager from '@/components/portfolio/WatchGroupsManager'
 
 const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN', asset_type: 'stock' }
 const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
@@ -84,6 +85,7 @@ export default function StocksPage() {
   const stockT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const agentName = (name: string, fallback?: string) => localizeAgentName(name, fallback, stockT)
   const [stocks, setStocks] = useState<Stock[]>([])
+  const [watchGroupsManagerOpen, setWatchGroupsManagerOpen] = useState(false)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [agents, setAgents] = useState<AgentConfig[]>([])
   const [services, setServices] = useState<AIService[]>([])
@@ -1314,6 +1316,7 @@ export default function StocksPage() {
           <h1 className="text-[18px] md:text-[22px] font-bold text-foreground tracking-tight shrink-0">{stockT('stocksPage.messages.portfolio')}</h1>
           {/* Desktop buttons + controls */}
           <div className="hidden md:flex items-center gap-3">
+            <Button variant="secondary" onClick={() => setWatchGroupsManagerOpen(true)}><FolderKanban className="w-4 h-4" />{stockT('stocksPage.watchGroups.title')}</Button>
             {/* Controls */}
             <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent/30">
               <div className="flex items-center gap-1.5">
@@ -1356,6 +1359,7 @@ export default function StocksPage() {
           </div>
           {/* Mobile buttons */}
           <div className="flex md:hidden items-center gap-1.5">
+            <Button aria-label={stockT('stocksPage.watchGroups.title')} variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => setWatchGroupsManagerOpen(true)}><FolderKanban className="w-4 h-4" /></Button>
             <Button data-tour="refresh-quotes" aria-label={stockT('stocksPage.messages.refreshed')} variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={handleRefresh} disabled={quotesLoading || tour?.busy}>
               <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
             </Button>
@@ -2597,6 +2601,8 @@ export default function StocksPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <WatchGroupsManager open={watchGroupsManagerOpen} onOpenChange={setWatchGroupsManagerOpen} stocks={stocks} />
 
       <NewsDialog open={newsDialogOpen} onOpenChange={setNewsDialogOpen} symbol={newsDialogSymbol}
         onSymbolChange={setNewsDialogSymbol} loading={newsLoading} news={news} stocks={stocks} onLoad={loadNews} />
