@@ -200,6 +200,8 @@ export interface LeftSideBacktestRun {
 }
 
 export interface LeftSideRankingResponse {
+  risk_excluded_count?: number
+  risk_exclusions?: Array<{ symbol: string; name: string; reasons: string[] }>
   snapshot_id: string
   signal_date?: string
   board: LeftSideBoard

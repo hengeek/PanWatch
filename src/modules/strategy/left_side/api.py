@@ -185,10 +185,8 @@ def get_rankings(
 
     metric, direction = rankings.BOARDS[board]
     column = getattr(LeftSideRankingItem, metric)
-    query = db.query(LeftSideRankingItem).filter(
-        LeftSideRankingItem.snapshot_id == snapshot.id,
-        column.is_not(None),
-    )
+    query, risk_exclusions = rankings.visible_ranking_query(db, snapshot.id)
+    query = query.filter(column.is_not(None))
     total = query.count()
     ordered = query.order_by(
         column.desc() if direction == "desc" else column.asc(),
@@ -226,6 +224,8 @@ def get_rankings(
             for index, row in enumerate(ordered, start=1)
         ],
         "total": total,
+        "risk_excluded_count": len(risk_exclusions),
+        "risk_exclusions": risk_exclusions,
         "offset": offset,
         "limit": limit,
     }

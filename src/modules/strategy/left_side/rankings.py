@@ -13,7 +13,8 @@ import threading
 import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
@@ -24,7 +25,7 @@ from src.platform.marketdata.marketdata_client import get_market_data
 from src.platform.marketdata.models import MarketCode
 from src.platform.marketdata.stock_list import get_stock_list, get_stock_list_metadata
 from src.platform.persistence.database import SessionLocal
-from src.platform.persistence.models import LeftSideRankingItem, LeftSideRankingSnapshot
+from src.platform.persistence.models import LeftSideCandidateReview, LeftSideRankingItem, LeftSideRankingSnapshot
 from src.platform.scheduling import trading_calendar
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,86 @@ def _now_utc_naive() -> datetime:
 
 def _is_name_excluded(name: str) -> bool:
     normalized = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(name or ""))).upper()
-    return normalized.startswith(("ST", "*ST", "SST", "S*ST")) or "退市" in normalized
+    return normalized.startswith(("ST", "*ST", "SST", "S*ST")) or "退市" in normalized or normalized.endswith("退")
+
+
+def financial_candidate_risks(data: dict[str, Any], *, explained: bool = False) -> list[str]:
+    """Identify disclosed financial risks; missing numbers never imply a pass."""
+    reasons = []
+    for key, label in (("annual_net_profit", "最近年度归母利润非正"), ("ttm_net_profit", "TTM归母利润非正"), ("adjusted_ttm_net_profit", "扣非TTM利润非正")):
+        value = _numeric(data.get(key))
+        if value is not None and value <= 0:
+            reasons.append(label)
+    audit = str(data.get("audit_opinion") or "")
+    if any(token in audit for token in ("否定", "无法表示")):
+        reasons.append("审计意见存在重大风险")
+    if not explained:
+        profit, adjusted = _numeric(data.get("ttm_net_profit")), _numeric(data.get("adjusted_ttm_net_profit"))
+        consolidated, cash = _numeric(data.get("consolidated_ttm_net_profit")), _numeric(data.get("operating_cash_flow_ttm"))
+        if profit is not None and profit > 0 and adjusted is not None and adjusted / profit < 0.5:
+            reasons.append("扣非利润占比低于50%，待专项复核")
+        if consolidated is not None and consolidated > 0 and cash is not None and cash / consolidated < 0.5:
+            reasons.append("经营现金流支持低于50%，待专项复核")
+        peer, short_debt, available = (_numeric(data.get(k)) for k in ("debt_peer_percentile", "short_term_debt", "unrestricted_cash"))
+        if peer is not None and peer >= 80 and short_debt is not None and short_debt > 0 and available is not None and available / short_debt < 1:
+            reasons.append("同行高负债且非受限现金不足以覆盖短债，待专项复核")
+    return reasons
+
+
+def visible_ranking_query(db, snapshot_id: str):
+    """Apply current known-risk overlays before ranking, counting or pagination.
+
+    Snapshot rows remain immutable for audit. Explicit adverse decisions persist
+    across snapshots until an explicit positive decision for that field replaces
+    them; creating a blank/pending review cannot erase an unresolved risk.
+    """
+    names = dict(db.query(LeftSideRankingItem.symbol, LeftSideRankingItem.name).filter_by(snapshot_id=snapshot_id).all())
+    exclusions: dict[str, list[str]] = {
+        symbol: ["ST或退市名称硬过滤"] for symbol, name in names.items() if _is_name_excluded(name)
+    }
+    states = {
+        "security_status": ({"normal", "st", "delisting", "delisted", "conflict"}, {"st", "delisting", "delisted", "conflict"}, "证券风险状态未解除"),
+        "security_trading_status": ({"trading", "suspended", "halted"}, {"suspended", "halted"}, "已确认停牌或临停"),
+        "pe_status": ({"verified", "conflict"}, {"conflict"}, "独立PE来源冲突未解除"),
+        "financial_status": ({"passed", "rejected"}, {"rejected"}, "财务风险复核未通过"),
+        "event_status": ({"clear", "risk"}, {"risk"}, "重大事件或经营风险未解除"),
+        "review_status": ({"approved", "rejected"}, {"rejected"}, "已被人工标记排除"),
+    }
+    seen = set()
+    reviews = db.query(LeftSideCandidateReview).filter(LeftSideCandidateReview.symbol.in_(list(names) or ["__none__"])).order_by(LeftSideCandidateReview.updated_at.desc(), LeftSideCandidateReview.id.desc()).all()
+    for review in reviews:
+        for field, (explicit, adverse, reason) in states.items():
+            key = (review.symbol, field)
+            value = getattr(review, field)
+            if key in seen or value not in explicit:
+                continue
+            seen.add(key)
+            if value in adverse:
+                exclusions.setdefault(review.symbol, []).append(reason)
+    # Pick the newest explicitly sourced report, not a newer blank review.
+    financial_reviews = {}
+    today = datetime.now(timezone.utc).astimezone(ZoneInfo('Asia/Shanghai')).date().isoformat()
+    for review in reviews:
+        data = review.financial_data or {}
+        period, announced = str(data.get("report_period") or "")[:10], str(data.get("announcement_at") or "")[:10]
+        try:
+            valid_dates = date.fromisoformat(period) <= date.fromisoformat(announced) <= date.fromisoformat(today)
+        except ValueError:
+            valid_dates = False
+        if not valid_dates or not (review.financial_source and review.financial_evidence):
+            continue
+        old = financial_reviews.get(review.symbol)
+        if old is None or (period, announced) > (str(old.financial_data.get("report_period"))[:10], str(old.financial_data.get("announcement_at"))[:10]):
+            financial_reviews[review.symbol] = review
+    for symbol, review in financial_reviews.items():
+        reasons = financial_candidate_risks(review.financial_data, explained=review.financial_status == "passed" and bool(review.financial_data.get("review_explanation")))
+        if reasons:
+            exclusions.setdefault(symbol, []).extend(reasons)
+    query = db.query(LeftSideRankingItem).filter_by(snapshot_id=snapshot_id)
+    if exclusions:
+        query = query.filter(LeftSideRankingItem.symbol.notin_(list(exclusions)))
+    details = [{"symbol": symbol, "name": names[symbol], "reasons": reasons} for symbol, reasons in sorted(exclusions.items())]
+    return query, details
 
 
 def _is_cn_stock(item: dict[str, Any]) -> bool:
