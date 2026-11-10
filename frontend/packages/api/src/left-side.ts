@@ -227,7 +227,7 @@ export const leftSideApi = {
   fetchFinancialPrefill: (snapshotId: string, symbol: string) => fetchAPI<LeftSideFinancialPrefill>(`/strategy-lab/reviews/${encodeURIComponent(snapshotId)}/${encodeURIComponent(symbol)}/financial-prefill`, { method: 'POST', timeoutMs: 120_000 }),
   updateReview: (snapshotId: string, symbol: string, payload: Record<string, unknown>) => fetchAPI<LeftSideReview>(`/strategy-lab/reviews/${encodeURIComponent(snapshotId)}/${encodeURIComponent(symbol)}`, { method: 'PUT', body: JSON.stringify(payload) }),
   reports: (snapshotId: string) => fetchAPI<{ items: LeftSideAIReport[] }>(`/strategy-lab/reports?snapshot_id=${encodeURIComponent(snapshotId)}`),
-  generateReport: (snapshotId: string) => fetchAPI<{ report_id: string; status: string; reused: boolean }>(`/strategy-lab/reports/generate?snapshot_id=${encodeURIComponent(snapshotId)}`, { method: 'POST' }),
+  generateReport: (snapshotId: string, symbols: string[]) => fetchAPI<{ report_id: string; status: string; reused: boolean }>(`/strategy-lab/reports/generate?snapshot_id=${encodeURIComponent(snapshotId)}`, { method: 'POST', body: JSON.stringify({ symbols }) }),
   report: (reportId: string) => fetchAPI<LeftSideAIReport>(`/strategy-lab/reports/${encodeURIComponent(reportId)}`),
   plans: (status = '') => fetchAPI<{ items: LeftSidePlan[] }>(`/strategy-lab/plans${status ? `?status=${encodeURIComponent(status)}` : ''}`),
   createPlan: (payload: Record<string, unknown>) => fetchAPI<LeftSidePlan>('/strategy-lab/plans', { method: 'POST', body: JSON.stringify(payload) }),

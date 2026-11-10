@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -24,6 +25,36 @@ def test_date_only_review_expiry_uses_china_market_day():
     assert workflows.market_today(instant).isoformat() == "2026-11-09"
 
 
+def test_legacy_ai_report_does_not_present_ungrounded_earnings_score_as_zero():
+    raw_report = {"candidate_scores": [{"symbol": "600000", "earnings_score": 0, "total_score": 60}]}
+    row = SimpleNamespace(
+        id="legacy-report",
+        snapshot_id="snapshot-1",
+        status="succeeded",
+        report_version="left-side-ai-v2",
+        prompt_version="market-candidates-plans-holdings-risks-watch-batched-v2",
+        input_fingerprint="fingerprint",
+        input_symbols=["600000"],
+        model_label="test-model",
+        report=raw_report,
+        usage={},
+        validation_status="passed",
+        validation_errors=[],
+        error_message="",
+        created_at=None,
+        finished_at=None,
+    )
+
+    serialized = workflows.serialize_report(row, {"600000": "示例科技"})
+    score = serialized["report"]["candidate_scores"][0]
+
+    assert score["name"] == "示例科技"
+    assert score["earnings_score"] is None
+    assert score["total_score"] is None
+    assert score["financial_quality_status"] == "unverified"
+    assert raw_report["candidate_scores"][0]["earnings_score"] == 0
+
+
 def test_low_position_uses_prior_sample_and_equal_close_is_not_higher():
     bars = [
         SimpleNamespace(date=f"2026-01-{index:02d}", close=10.0 if index < 60 else 9.0, volume=1.0, open=9.0, high=10.0, low=8.0)
@@ -43,6 +74,7 @@ def test_financial_quality_score_requires_complete_and_valid_peer_data():
     data = {
         "annual_net_profit": 80,
         "ttm_net_profit": 100,
+        "consolidated_ttm_net_profit": 100,
         "adjusted_ttm_net_profit": 50,
         "operating_cash_flow_ttm": 60,
         "debt_ratio": 40,
@@ -60,6 +92,69 @@ def test_financial_quality_score_requires_complete_and_valid_peer_data():
     assert missing == []
     assert workflows.quality_score({"industry_group": "银行"})[0] is None
     assert workflows.quality_score({})[1]
+
+
+def test_financial_quality_is_only_shared_with_ai_after_evidence_and_point_in_time_checks():
+    financial_data = {
+        "annual_net_profit": 80,
+        "ttm_net_profit": 100,
+        "consolidated_ttm_net_profit": 100,
+        "adjusted_ttm_net_profit": 50,
+        "operating_cash_flow_ttm": 60,
+        "debt_ratio": 40,
+        "debt_peer_percentile": 40,
+        "debt_peer_count": 10,
+        "unrestricted_cash": 90,
+        "short_term_debt": 30,
+        "industry_group": "software",
+        "report_period": "2025-12-31",
+        "announcement_at": "2026-03-30",
+        "audit_opinion": "标准无保留意见",
+    }
+    review = SimpleNamespace(
+        financial_data=financial_data,
+        financial_status="passed",
+        financial_source="annual report",
+        financial_evidence="Verified against the company filing",
+        financial_evidence_url="https://example.test/report",
+    )
+
+    result = workflows._financial_quality_input(review, "2026-11-09")
+    future_result = workflows._financial_quality_input(
+        SimpleNamespace(**{**vars(review), "financial_data": {**financial_data, "announcement_at": "2026-11-10"}}),
+        "2026-11-09",
+    )
+
+    assert result["financial_quality_status"] == "verified"
+    assert result["financial_quality_score"] == 52.5
+    assert future_result["financial_quality_status"] == "unverified"
+    assert future_result["financial_quality_score"] is None
+    assert "财务数据晚于榜单信号日" in future_result["financial_quality_missing"]
+
+
+def test_ai_earnings_score_uses_verified_quality_or_stays_blank():
+    raw_score = {
+        "symbol": "600000",
+        "low_position_score": 20,
+        "earnings_score": 30,
+        "trend_flow_score": 10,
+        "risk_safety_score": 5,
+        "total_score": 65,
+        "action": "review",
+        "evidence": "fixture",
+    }
+    verified = {"financial_quality_status": "verified", "financial_quality_score": 80}
+    missing = {"financial_quality_status": "unverified", "financial_quality_score": None}
+
+    verified_score = workflows._finalize_candidate_score(raw_score, verified)
+    missing_score = workflows._finalize_candidate_score(raw_score, missing)
+
+    assert verified_score["earnings_score"] == 24
+    assert verified_score["total_score"] == 59
+    assert missing_score["earnings_score"] is None
+    assert missing_score["total_score"] is None
+    assert not workflows._candidate_score_errors(verified_score, verified, admission_allowed=False)
+    assert not workflows._candidate_score_errors(missing_score, missing, admission_allowed=False)
 
 
 def test_review_and_plan_gates_are_evidence_backed_and_coverage_strict():
@@ -93,6 +188,7 @@ def test_review_and_plan_gates_are_evidence_backed_and_coverage_strict():
         complete_financials = {
             "annual_net_profit": 80,
             "ttm_net_profit": 100,
+            "consolidated_ttm_net_profit": 100,
             "adjusted_ttm_net_profit": 75,
             "operating_cash_flow_ttm": 100,
             "debt_ratio": 40,
@@ -239,6 +335,157 @@ def test_ai_report_validator_rejects_out_of_set_and_gate_bypass():
     assert any("不能进入买入清单" in error for error in errors)
 
 
+def test_batched_ai_report_collects_every_candidate_without_a_single_large_score_response(monkeypatch):
+    candidates = [{"symbol": f"600{index:03d}", "review_status": "pending"} for index in range(49)]
+    calls = []
+
+    async def fake_call(_client, _prompt, payload, *, max_tokens):
+        calls.append((payload, max_tokens))
+        if "top_candidates" in payload:
+            return {
+                "market_judgment": {"summary": "fixture"},
+                "today_buy_list": [],
+                "holdings_and_additions": {"summary": "no holdings data"},
+                "risks_and_discipline": {"summary": "fixture"},
+                "tomorrow_watch": {"summary": "fixture"},
+            }
+        return {"candidate_scores": [{
+            "symbol": candidate["symbol"],
+            "low_position_score": 10,
+            "earnings_score": 10,
+            "trend_flow_score": 10,
+            "risk_safety_score": 5,
+            "total_score": 35,
+            "action": "review",
+            "rationale": "fixture rationale",
+            "evidence": "fixture evidence",
+        } for candidate in payload["candidates"]]}
+
+    monkeypatch.setattr(workflows, "_call_ai_json", fake_call)
+    report, call_count = asyncio.run(workflows._generate_batched_ai_report(object(), {
+        "snapshot_id": "snapshot-fixture",
+        "signal_date": "2026-11-09",
+        "parameters": {},
+        "coverage_status": "unverified",
+        "admission_allowed": False,
+        "candidates": candidates,
+        "data_boundary": "fixture",
+    }))
+
+    assert call_count == 8  # one overview and seven score batches
+    assert [len(payload["candidates"]) for payload, _ in calls if "candidates" in payload] == [8, 8, 8, 8, 8, 8, 1]
+    assert [max_tokens for _, max_tokens in calls] == [6000] * 7 + [4000]
+    assert [score["symbol"] for score in report["candidate_scores"]] == [candidate["symbol"] for candidate in candidates]
+
+
+def test_ai_report_json_repair_keeps_valid_model_values():
+    class RepairClient:
+        def __init__(self):
+            self.responses = ['{"ok":true "score":35}', '{"ok":true,"score":35}']
+            self.requests = []
+
+        async def chat_multi(self, messages, **kwargs):
+            self.requests.append((messages, kwargs))
+            return self.responses.pop(0)
+
+    client = RepairClient()
+    result = asyncio.run(workflows._call_ai_json(client, "return JSON", {"fixture": True}, max_tokens=100))
+
+    assert result == {"ok": True, "score": 35}
+    assert len(client.requests) == 2
+    assert client._left_side_json_repair_calls == 1
+    assert client.requests[1][1]["response_format"] == {"type": "json_object"}
+
+
+def test_batched_ai_report_retries_only_candidates_missing_from_a_batch(monkeypatch):
+    candidates = [{"symbol": "600000", "review_status": "pending"}, {"symbol": "600001", "review_status": "pending"}]
+    calls = []
+
+    def score_for(candidate):
+        return {
+            "symbol": candidate["symbol"],
+            "low_position_score": 10,
+            "earnings_score": 10,
+            "trend_flow_score": 10,
+            "risk_safety_score": 5,
+            "total_score": 35,
+            "action": "review",
+            "evidence": "fixture evidence",
+        }
+
+    async def fake_call(_client, _prompt, payload, *, max_tokens):
+        calls.append(payload)
+        if "top_candidates" in payload:
+            return {
+                "market_judgment": {"summary": "fixture"},
+                "today_buy_list": [],
+                "holdings_and_additions": {"summary": "no holdings data"},
+                "risks_and_discipline": {"summary": "fixture"},
+                "tomorrow_watch": {"summary": "fixture"},
+            }
+        if len(calls) == 1:
+            return {"candidate_scores": [score_for(payload["candidates"][0])]}
+        return {"candidate_scores": [score_for(payload["candidates"][0])]}
+
+    monkeypatch.setattr(workflows, "_call_ai_json", fake_call)
+    report, call_count = asyncio.run(workflows._generate_batched_ai_report(object(), {
+        "snapshot_id": "snapshot-retry-fixture",
+        "signal_date": "2026-11-09",
+        "parameters": {},
+        "coverage_status": "unverified",
+        "admission_allowed": False,
+        "candidates": candidates,
+        "data_boundary": "fixture",
+    }))
+
+    assert call_count == 3
+    assert [len(payload["candidates"]) for payload in calls[:2]] == [2, 1]
+    assert [score["symbol"] for score in report["candidate_scores"]] == ["600000", "600001"]
+
+
+def test_batched_ai_report_retries_candidate_with_incomplete_score(monkeypatch):
+    candidate = {"symbol": "600000", "review_status": "pending"}
+    calls = []
+
+    async def fake_call(_client, _prompt, payload, *, max_tokens):
+        calls.append(payload)
+        if "top_candidates" in payload:
+            return {
+                "market_judgment": {"summary": "fixture"},
+                "today_buy_list": [],
+                "holdings_and_additions": {"summary": "no holdings data"},
+                "risks_and_discipline": {"summary": "fixture"},
+                "tomorrow_watch": {"summary": "fixture"},
+            }
+        if len(calls) == 1:
+            return {"candidate_scores": [{"symbol": "600000"}]}
+        return {"candidate_scores": [{
+            "symbol": "600000",
+            "low_position_score": 10,
+            "earnings_score": 10,
+            "trend_flow_score": 10,
+            "risk_safety_score": 5,
+            "total_score": 35,
+            "action": "review",
+            "evidence": "fixture evidence",
+        }]}
+
+    monkeypatch.setattr(workflows, "_call_ai_json", fake_call)
+    report, call_count = asyncio.run(workflows._generate_batched_ai_report(object(), {
+        "snapshot_id": "snapshot-invalid-score-fixture",
+        "signal_date": "2026-11-09",
+        "parameters": {},
+        "coverage_status": "unverified",
+        "admission_allowed": False,
+        "candidates": [candidate],
+        "data_boundary": "fixture",
+    }))
+
+    assert call_count == 3
+    assert [len(payload["candidates"]) for payload in calls[:2]] == [1, 1]
+    assert not workflows._candidate_score_errors(report["candidate_scores"][0], candidate, admission_allowed=False)
+
+
 def test_independent_simulation_replays_entry_and_fixed_target_without_old_paper_trades(monkeypatch):
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -284,6 +531,7 @@ def test_independent_simulation_replays_entry_and_fixed_target_without_old_paper
             financial_data={
                 "annual_net_profit": 80,
                 "ttm_net_profit": 100,
+                "consolidated_ttm_net_profit": 100,
                 "adjusted_ttm_net_profit": 75,
                 "operating_cash_flow_ttm": 100,
                 "debt_ratio": 40,
@@ -429,6 +677,7 @@ def _seed_backtest(db, *, hold_past_target: bool = False):
         financial_data={
             "annual_net_profit": 80,
             "ttm_net_profit": 100,
+            "consolidated_ttm_net_profit": 100,
             "adjusted_ttm_net_profit": 75,
             "operating_cash_flow_ttm": 100,
             "debt_ratio": 40,

@@ -10,6 +10,32 @@ import { useTranslation } from 'react-i18next'
 
 type Panel = 'review' | 'ai' | 'plans' | 'simulation' | 'backtest'
 type ReviewDraft = Partial<LeftSideReview>
+type CandidateAIScore = Record<string, unknown>
+
+const SCORE_DIMENSIONS = [
+  { key: 'low_position_score', cap: 40, label: 'lowPosition' },
+  { key: 'earnings_score', cap: 30, label: 'earnings' },
+  { key: 'trend_flow_score', cap: 20, label: 'trendFlow' },
+  { key: 'risk_safety_score', cap: 10, label: 'riskSafety' },
+] as const
+
+function candidateScoreRows(report: Record<string, unknown>): CandidateAIScore[] {
+  const scores = report.candidate_scores
+  return Array.isArray(scores) ? scores.filter((item): item is CandidateAIScore => Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : []
+}
+
+function scoreNumber(score: CandidateAIScore, key: string): number | null {
+  const raw = score[key]
+  if (raw == null || raw === '' || (typeof raw !== 'string' && typeof raw !== 'number')) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function readableValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value == null) return ''
+  try { return JSON.stringify(value) } catch { return String(value) }
+}
 
 export default function LeftSideOperations({ snapshotId, snapshot, candidates, selectedCandidate, onSelectCandidate, onRefresh }: {
   snapshotId: string
@@ -117,7 +143,11 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
     leftSideApi.backtests().then(result => setBacktestRuns(result.items || [])).catch(error => toast(error instanceof Error ? error.message : tr('workflow.failed'), 'error'))
   }, [panel, toast, tr])
 
-  const pendingReport = useMemo(() => reports.find(report => report.status === 'queued' || report.status === 'running'), [reports])
+  const scopedReports = useMemo(() => {
+    const symbols = new Set(candidates.map(item => item.symbol))
+    return reports.filter(report => report.input_symbols.length === symbols.size && report.input_symbols.every(symbol => symbols.has(symbol)))
+  }, [reports, candidates])
+  const pendingReport = useMemo(() => scopedReports.find(report => report.status === 'queued' || report.status === 'running'), [scopedReports])
   useEffect(() => {
     if (!pendingReport) return
     const timer = window.setInterval(() => { void loadReports() }, 2500)
@@ -200,7 +230,7 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
     if (!(await confirmAction(tr('workflow.ai.confirm'), { title: tr('workflow.ai.title') }))) return
     setReportLoading(true)
     try {
-      await leftSideApi.generateReport(snapshotId)
+      await leftSideApi.generateReport(snapshotId, candidates.map(item => item.symbol))
       await loadReports()
       toast(tr('workflow.ai.started'), 'success')
     } catch (error) {
@@ -482,18 +512,72 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
       {panel === 'ai' && (
         <div className="space-y-4 p-4 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><h2 className="text-base font-semibold">{tr('workflow.ai.title')}</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">{tr('workflow.ai.description')}</p></div>
-            <Button onClick={() => void generateReport()} disabled={reportLoading || Boolean(pendingReport) || !snapshotId}>{tr('workflow.ai.generate')}</Button>
+            <div><h2 className="text-base font-semibold">{tr('workflow.ai.title')}</h2><p className="mt-1 text-xs font-medium">{tr('workflow.ai.selectedScope', { count: candidates.length })}</p><p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">{tr('workflow.ai.description')}</p></div>
+            <Button onClick={() => void generateReport()} disabled={reportLoading || Boolean(pendingReport) || !snapshotId || candidates.length === 0}>{tr('workflow.ai.generate')}</Button>
           </div>
-          {reports.length === 0 ? <Empty text={tr('workflow.ai.empty')} /> : reports.map(report => (
+          {scopedReports.length === 0 ? <Empty text={tr(snapshotId ? 'workflow.ai.empty' : 'workflow.ai.noSnapshot')} /> : scopedReports.map(report => {
+            const candidateScores = candidateScoreRows(report.report || {}).sort((a, b) => (scoreNumber(b, 'total_score') ?? -1) - (scoreNumber(a, 'total_score') ?? -1))
+            const isPending = report.status === 'queued' || report.status === 'running'
+            return (
             <article key={report.report_id} className="space-y-3 rounded-xl border border-border/60 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><strong>{report.status} · {report.model_label || tr('workflow.ai.modelPending')}</strong><span className="text-muted-foreground">{report.created_at}</span></div>
               <p className="text-[11px] text-muted-foreground">{tr('workflow.ai.validity')}: {report.validation_status} · {report.input_symbols.length} {tr('workflow.ai.candidates')}</p>
               {report.validation_errors.length > 0 && <ul className="list-disc pl-5 text-xs text-amber-700 dark:text-amber-300">{report.validation_errors.slice(0, 12).map((error, index) => <li key={`${error}-${index}`}>{error}</li>)}</ul>}
               {report.error_message && <p className="text-xs text-destructive">{report.error_message}</p>}
-              {report.report && <pre className="scrollbar max-h-[480px] overflow-auto rounded-lg bg-accent/35 p-3 text-[10px] leading-5">{JSON.stringify(report.report, null, 2)}</pre>}
+              {candidateScores.length > 0 ? (
+                <section className="space-y-3 rounded-lg bg-accent/20 p-3" aria-label={tr('workflow.ai.scoreTitle')}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold">{tr('workflow.ai.scoreTitle')}</h3>
+                    <span className="text-[10px] text-muted-foreground">{tr('workflow.ai.scoreDisclaimer')}</span>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {candidateScores.map((score, index) => {
+                      const total = scoreNumber(score, 'total_score')
+                      const symbol = readableValue(score.symbol) || '—'
+                      const name = readableValue(score.name)
+                      const action = readableValue(score.action)
+                      const rationale = readableValue(score.rationale)
+                      const evidence = readableValue(score.evidence)
+                      const financialQualityStatus = readableValue(score.financial_quality_status)
+                      const knownParts = SCORE_DIMENSIONS.filter(dimension => scoreNumber(score, dimension.key) != null)
+                      const knownScore = knownParts.reduce((sum, dimension) => sum + (scoreNumber(score, dimension.key) || 0), 0)
+                      const knownMax = knownParts.reduce((sum, dimension) => sum + dimension.cap, 0)
+                      return (
+                        <article key={`${symbol}-${index}`} className="space-y-2 rounded-lg border border-border/60 bg-background p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-baseline gap-2"><strong className="truncate text-sm">{name || symbol}</strong>{name && <span className="shrink-0 text-[11px] text-muted-foreground">{symbol}</span>}</div>
+                            <span className="rounded-full bg-accent px-2 py-1 text-[10px]">{tr(`workflow.ai.actions.${action}`, { defaultValue: action || '—' })}</span>
+                          </div>
+                          <div className="flex items-baseline justify-between"><span className="text-[11px] text-muted-foreground">{tr('workflow.ai.total')}</span><strong className="text-lg tabular-nums">{total == null ? '—' : total.toFixed(1)}<span className="text-[10px] font-normal text-muted-foreground"> / 100</span></strong></div>
+                          {total == null && <p className="text-[10px] text-muted-foreground">{tr('workflow.ai.partialScore', { score: knownScore.toFixed(1), max: knownMax })}</p>}
+                          <div className="space-y-1.5">
+                            {SCORE_DIMENSIONS.map(dimension => {
+                              const value = scoreNumber(score, dimension.key)
+                              const barWidth = value == null ? 0 : Math.min(100, Math.max(0, (value / dimension.cap) * 100))
+                              return (
+                                <div key={dimension.key} className="space-y-1">
+                                  <div className="flex justify-between gap-2 text-[10px]"><span className="text-muted-foreground">{tr(`workflow.ai.dimensions.${dimension.label}`)}</span><span className="tabular-nums">{value == null ? '—' : value.toFixed(1)} / {dimension.cap}</span></div>
+                                  <div role="progressbar" aria-label={tr(`workflow.ai.dimensions.${dimension.label}`)} aria-valuemin={0} aria-valuemax={dimension.cap} aria-valuenow={value == null ? 0 : Math.min(dimension.cap, Math.max(0, value))} className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${barWidth}%` }} /></div>
+                                  {dimension.key === 'earnings_score' && financialQualityStatus !== 'verified' && <p className="text-[10px] leading-4 text-muted-foreground">{tr('workflow.ai.financialQualityPending')}</p>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          {rationale && <p className="text-[11px] leading-4"><span className="font-medium">{tr('workflow.ai.rationale')}：</span>{rationale}</p>}
+                          {evidence && <p className="text-[10px] leading-4 text-muted-foreground"><span className="font-medium">{tr('workflow.ai.evidence')}：</span>{evidence}</p>}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+              ) : isPending ? (
+                <p className="rounded-lg bg-accent/20 p-3 text-xs text-muted-foreground">{tr('workflow.ai.scorePending')}</p>
+              ) : (
+                <p className="rounded-lg bg-accent/20 p-3 text-xs text-muted-foreground">{tr('workflow.ai.scoreEmpty')}</p>
+              )}
+              {report.report && <details className="rounded-lg border border-border/60"><summary className="cursor-pointer px-3 py-2 text-xs font-medium">{tr('workflow.ai.rawReport')}</summary><pre className="scrollbar max-h-[480px] overflow-auto border-t border-border/60 bg-accent/35 p-3 text-[10px] leading-5">{JSON.stringify(report.report, null, 2)}</pre></details>}
             </article>
-          ))}
+          )})}
         </div>
       )}
 
