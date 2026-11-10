@@ -808,6 +808,7 @@ function PortfolioOverview({ diagnostics, attribution, benchmark, aiReview, busy
   diagnostics: PortfolioDiagnostics | null; attribution: AttributionItem[]; benchmark: PortfolioBenchmark | null; aiReview: PortfolioAiReview | null; busy: boolean; aiBusy: boolean; privacy: boolean; locale: string; tr: (key: string, options?: Record<string, unknown>) => string; onAIReview: () => void; onOpenWeb: () => void
 }) {
   const curve = benchmark?.curve ?? []
+  const totalMarketValue = diagnostics?.total_market_value ?? 0
   const points = curve.map((item, index) => `${index / Math.max(1, curve.length - 1) * 100},${60 - ((item.portfolio - Math.min(...curve.map(point => point.portfolio))) / (Math.max(...curve.map(point => point.portfolio)) - Math.min(...curve.map(point => point.portfolio)) || 1)) * 50}`).join(' ')
   return <section className="full-panel portfolio-panel">
     <div className="list-toolbar"><div><span className="eyebrow">PORTFOLIO / 03</span><h1>{tr('portfolio.title')}<small>{tr('portfolio.subtitle')}</small></h1></div><button className="outline-button" onClick={onOpenWeb}>{tr('portfolio.webDetails')} <ExternalLink size={13}/></button></div>
@@ -815,13 +816,16 @@ function PortfolioOverview({ diagnostics, attribution, benchmark, aiReview, busy
       <div className="analytics-cards">
         <article className="analytics-card"><span>{tr('portfolio.positionCount')}</span><b>{diagnostics?.position_count ?? '—'}</b></article>
         <article className="analytics-card"><span>{tr('portfolio.marketValue')}</span><b>{privacy ? '••••••' : diagnostics ? currencyText(diagnostics.total_market_value, locale) : '—'}</b></article>
-        <article className="analytics-card"><span>{tr('portfolio.topWeight')}</span><b>{diagnostics ? signedPercent(diagnostics.max_weight, locale) : '—'}</b></article>
+        <article className="analytics-card"><span>{tr('portfolio.topWeight')}</span><b>{diagnostics ? signedPercent(diagnostics.max_weight * 100, locale) : '—'}</b></article>
         <article className="analytics-card"><span>{tr('portfolio.hhi')}</span><b>{diagnostics ? numberText(diagnostics.hhi, locale, 3) : '—'}</b></article>
       </div>
       <div className="analytics-grid">
         <section className="analytics-section"><div className="section-title"><b>{tr('portfolio.concentration')}</b><span className="micro-tag">{diagnostics?.position_count ?? 0} {tr('portfolio.positions')}</span></div>
           {diagnostics?.alerts?.length ? <ul className="risk-list">{diagnostics.alerts.map((alert, index) => <li key={index}>{alert}</li>)}</ul> : <p className="detail-note">{diagnostics ? tr('portfolio.noRiskFlags') : tr('portfolio.noDiagnostics')}</p>}
-          <div className="market-breakdown">{Object.entries(diagnostics?.by_market ?? {}).map(([market, weight]) => <div key={market}><span>{tr(`markets.${market}`)}</span><div className="weight-track"><i style={{ width: `${Math.max(0, Math.min(100, weight))}%` }}/></div><b>{signedPercent(weight, locale)}</b></div>)}</div>
+          <div className="market-breakdown">{Object.entries(diagnostics?.by_market ?? {}).map(([market, value]) => {
+            const weight = totalMarketValue > 0 ? value / totalMarketValue * 100 : 0
+            return <div key={market}><span>{tr(`markets.${market}`)}</span><div className="weight-track"><i style={{ width: `${Math.max(0, Math.min(100, weight))}%` }}/></div><b>{signedPercent(weight, locale)}</b></div>
+          })}</div>
         </section>
         <section className="analytics-section"><div className="section-title"><b>{tr('portfolio.benchmark')}</b><span className="micro-tag">{benchmark?.benchmark_label ?? tr('portfolio.benchmarkName')}</span></div>
           {benchmark?.curve?.length ? <><svg viewBox="0 0 100 66" preserveAspectRatio="none" className="benchmark-chart"><polyline points={points} fill="none" stroke="#2f795e" strokeWidth="1.7" vectorEffect="non-scaling-stroke"/></svg><div className="benchmark-stats"><span>{tr('portfolio.portfolioReturn')} <b>{signedPercent(benchmark.portfolio_return, locale)}</b></span><span>{tr('portfolio.excessReturn')} <b className={tone(benchmark.excess_return)}>{signedPercent(benchmark.excess_return, locale)}</b></span></div></> : <div className="chart-placeholder">{tr(benchmark?.reason === 'insufficient_data' ? 'portfolio.benchmarkInsufficient' : 'portfolio.benchmarkUnavailable')}</div>}
