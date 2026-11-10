@@ -114,6 +114,30 @@ export interface LeftSideReview {
   history?: Array<Record<string, unknown>>
 }
 
+export interface LeftSideAutoVerification {
+  symbol: string
+  signal_date: string
+  checked_at: string
+  source: string
+  evidence_url: string
+  patch: Partial<LeftSideReview>
+  checks: Array<{ key: string; status: string; message: string }>
+}
+
+export interface LeftSideFinancialPrefill {
+  symbol: string
+  signal_date: string
+  financial_status: 'needs_review'
+  financial_data: Record<string, unknown>
+  financial_source: string
+  financial_evidence_url: string
+  financial_evidence: string
+  missing_fields: string[]
+  field_reasons: Record<string, string>
+  warnings: string[]
+  cross_check: Record<string, unknown>
+}
+
 export interface LeftSideAIReport {
   report_id: string
   snapshot_id: string
@@ -197,6 +221,8 @@ export const leftSideApi = {
   cancel: (snapshotId: string) => fetchAPI<{ snapshot_id: string; status: string; cancelled: boolean }>(`/strategy-lab/rankings/${encodeURIComponent(snapshotId)}/cancel`, { method: 'POST' }),
   verifyCoverage: (snapshotId: string, payload: Record<string, unknown>) => fetchAPI<{ snapshot: LeftSideSnapshot; operator_attested: boolean; automatically_fetched_or_verified: boolean }>(`/strategy-lab/snapshots/${encodeURIComponent(snapshotId)}/coverage`, { method: 'PUT', body: JSON.stringify(payload) }),
   review: (snapshotId: string, symbol: string) => fetchAPI<LeftSideReview>(`/strategy-lab/reviews/${encodeURIComponent(snapshotId)}/${encodeURIComponent(symbol)}`),
+  autoVerify: (snapshotId: string, symbol: string) => fetchAPI<LeftSideAutoVerification>(`/strategy-lab/reviews/${encodeURIComponent(snapshotId)}/${encodeURIComponent(symbol)}/auto-verification`, { method: 'POST', timeoutMs: 60_000 }),
+  fetchFinancialPrefill: (snapshotId: string, symbol: string) => fetchAPI<LeftSideFinancialPrefill>(`/strategy-lab/reviews/${encodeURIComponent(snapshotId)}/${encodeURIComponent(symbol)}/financial-prefill`, { method: 'POST', timeoutMs: 120_000 }),
   updateReview: (snapshotId: string, symbol: string, payload: Record<string, unknown>) => fetchAPI<LeftSideReview>(`/strategy-lab/reviews/${encodeURIComponent(snapshotId)}/${encodeURIComponent(symbol)}`, { method: 'PUT', body: JSON.stringify(payload) }),
   reports: (snapshotId: string) => fetchAPI<{ items: LeftSideAIReport[] }>(`/strategy-lab/reports?snapshot_id=${encodeURIComponent(snapshotId)}`),
   generateReport: (snapshotId: string) => fetchAPI<{ report_id: string; status: string; reused: boolean }>(`/strategy-lab/reports/generate?snapshot_id=${encodeURIComponent(snapshotId)}`, { method: 'POST' }),

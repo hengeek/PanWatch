@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from src.modules.strategy.left_side import rankings
 from src.modules.strategy.left_side import workflows
 from src.modules.strategy.left_side import backtesting
+from src.modules.strategy.left_side import financial_data
 from src.platform.persistence.models import LeftSideAIReport, LeftSideConditionalPlan, LeftSideExperimentAccount, LeftSideRankingSnapshot
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import LeftSideRankingItem
@@ -251,6 +252,45 @@ def get_review(snapshot_id: str, symbol: str, db: Session = Depends(get_db)):
         return workflows.serialize_review(row, db)
     except ValueError as exc:
         raise api_error(404, "left_side_candidate_not_found", str(exc))
+
+
+@router.post("/reviews/{snapshot_id}/{symbol}/auto-verification")
+def post_auto_verification(
+    snapshot_id: str,
+    symbol: str,
+    db: Session = Depends(get_db),
+    actor: str | None = Depends(get_current_user),
+):
+    from src.modules.strategy.left_side.verification import verify_candidate
+
+    try:
+        snapshot, item = workflows._candidate(db, snapshot_id, symbol)
+    except ValueError as exc:
+        raise api_error(404, "left_side_candidate_not_found", str(exc))
+    try:
+        return verify_candidate(item.symbol, snapshot.signal_date, item.pe_ttm, item.pe_source or "")
+    except ValueError as exc:
+        raise api_error(422, "left_side_verification_invalid", str(exc))
+
+
+@router.post("/reviews/{snapshot_id}/{symbol}/financial-prefill")
+def post_financial_prefill(
+    snapshot_id: str,
+    symbol: str,
+    db: Session = Depends(get_db),
+    actor: str | None = Depends(get_current_user),
+):
+    """Return an unsaved public-data draft; approval remains an explicit human action."""
+    try:
+        snapshot, item = workflows._candidate(db, snapshot_id, symbol)
+    except ValueError as exc:
+        raise api_error(404, "left_side_candidate_not_found", str(exc))
+    try:
+        return financial_data.fetch_financial_prefill(item.symbol, snapshot.signal_date)
+    except ValueError as exc:
+        raise api_error(422, "left_side_financial_prefill_invalid", str(exc))
+    except financial_data.FinancialDataFetchError as exc:
+        raise api_error(503, "left_side_financial_source_unavailable", str(exc))
 
 
 @router.put("/reviews/{snapshot_id}/{symbol}")

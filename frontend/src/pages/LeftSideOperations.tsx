@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, ClipboardCheck, FileText, FlaskConical, ListChecks, ShieldCheck } from 'lucide-react'
-import { leftSideApi, type LeftSideAIReport, type LeftSideBacktestRun, type LeftSideExperimentAccount, type LeftSidePlan, type LeftSideRankingItem, type LeftSideReview, type LeftSideSnapshot } from '@panwatch/api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, ClipboardCheck, Download, FileText, FlaskConical, ListChecks, ShieldCheck } from 'lucide-react'
+import { leftSideApi, type LeftSideAutoVerification, type LeftSideAIReport, type LeftSideBacktestRun, type LeftSideExperimentAccount, type LeftSidePlan, type LeftSideRankingItem, type LeftSideReview, type LeftSideSnapshot } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
@@ -26,7 +26,15 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
   const [panel, setPanel] = useState<Panel>('review')
   const [review, setReview] = useState<LeftSideReview | null>(null)
   const [draft, setDraft] = useState<ReviewDraft>({})
+  const [autoVerification, setAutoVerification] = useState<LeftSideAutoVerification | null>(null)
+  const [autoVerifyBusy, setAutoVerifyBusy] = useState(false)
+  const selectionKey = `${snapshotId}:${selectedCandidate?.symbol || ''}`
+  const activeSelection = useRef(selectionKey)
+  activeSelection.current = selectionKey
+  useEffect(() => { setAutoVerification(null) }, [selectionKey])
   const [financialJson, setFinancialJson] = useState('{}')
+  const [financialWarnings, setFinancialWarnings] = useState<string[]>([])
+  const [financialFetchBusy, setFinancialFetchBusy] = useState(false)
   const [savingReview, setSavingReview] = useState(false)
   const [reports, setReports] = useState<LeftSideAIReport[]>([])
   const [reportLoading, setReportLoading] = useState(false)
@@ -56,12 +64,15 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
   }, [snapshot?.snapshot_id, snapshot?.signal_date])
 
   const loadReview = useCallback(async () => {
-    if (!snapshotId || !selectedCandidate) { setReview(null); setDraft({}); return }
+    if (!snapshotId || !selectedCandidate) { setReview(null); setDraft({}); setFinancialJson('{}'); setFinancialWarnings([]); return }
     try {
       const result = await leftSideApi.review(snapshotId, selectedCandidate.symbol)
       setReview(result)
       setDraft(result)
       setFinancialJson(JSON.stringify(result.financial_data || {}, null, 2))
+      const sourceMetadata = result.financial_data?.source_metadata
+      const savedWarnings = sourceMetadata && typeof sourceMetadata === 'object' ? (sourceMetadata as Record<string, unknown>).warnings : null
+      setFinancialWarnings(Array.isArray(savedWarnings) ? savedWarnings.filter((item): item is string => typeof item === 'string') : [])
     } catch (error) {
       toast(error instanceof Error ? error.message : tr('workflow.failed'), 'error')
     }
@@ -121,6 +132,42 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
   }, [accountId, panel, toast, tr])
 
   const updateDraft = (field: keyof ReviewDraft, value: unknown) => setDraft(current => ({ ...current, [field]: value }))
+  const autoVerify = async () => {
+    if (!snapshotId || !selectedCandidate || !review) return
+    if (!(await confirmAction(tr('workflow.review.autoVerifyConfirm')))) return
+    const requestKey = selectionKey
+    setAutoVerifyBusy(true)
+    try {
+      const result = await leftSideApi.autoVerify(snapshotId, selectedCandidate.symbol)
+      if (activeSelection.current !== requestKey) return
+      setAutoVerification(result)
+      setDraft(current => ({ ...current, ...result.patch }))
+      toast(tr('workflow.review.autoVerifyDone'), 'info')
+    } catch (error) {
+      if (activeSelection.current === requestKey) toast(error instanceof Error ? error.message : tr('workflow.failed'), 'error')
+    } finally { setAutoVerifyBusy(false) }
+  }
+  const fetchFinancialPrefill = async () => {
+    if (!snapshotId || !selectedCandidate || !review) return
+    const savedJson = JSON.stringify(review.financial_data || {}, null, 2)
+    if (financialJson.trim() !== savedJson.trim() && !(await confirmAction(tr('workflow.review.prefillReplaceConfirm'), { title: tr('workflow.review.financial') }))) return
+    setFinancialFetchBusy(true)
+    try {
+      const result = await leftSideApi.fetchFinancialPrefill(snapshotId, selectedCandidate.symbol)
+      setFinancialJson(JSON.stringify(result.financial_data || {}, null, 2))
+      setFinancialWarnings(result.warnings || [])
+      setDraft(current => ({
+        ...current,
+        financial_status: 'needs_review',
+        financial_source: result.financial_source,
+        financial_evidence_url: result.financial_evidence_url,
+        financial_evidence: result.financial_evidence,
+      }))
+      toast(tr('workflow.review.prefillDone'), result.warnings?.length ? 'info' : 'success')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : tr('workflow.failed'), 'error')
+    } finally { setFinancialFetchBusy(false) }
+  }
   const saveReview = async (decision: 'pending' | 'approve' | 'hold' | 'reject') => {
     if (!snapshotId || !selectedCandidate || !review) return
     let financialData: Record<string, unknown>
@@ -351,6 +398,19 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                 <span className="rounded-full bg-accent px-2 py-1">Q: {review.quality_score == null ? '—' : review.quality_score.toFixed(2)}</span>
                 <span className="text-muted-foreground">{review.financial_missing.join(' · ')}</span>
               </div>
+              <div className="space-y-3 rounded-xl border border-border/60 p-4">
+                <Button variant="outline" disabled={autoVerifyBusy || savingReview || financialFetchBusy} onClick={() => void autoVerify()}>
+                  <ShieldCheck className="mr-1.5 h-4 w-4" />{tr(autoVerifyBusy ? 'workflow.review.autoVerifyLoading' : 'workflow.review.autoVerify')}
+                </Button>
+                <p className="text-xs leading-5 text-muted-foreground">{tr('workflow.review.autoVerifyHelp')}</p>
+                {autoVerification && <div role="status" className="space-y-2 text-xs">
+                  <p>{autoVerification.source} · {autoVerification.checked_at}</p>
+                  {autoVerification.checks.map(check => <p key={check.key} className={check.status === 'verified' ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300'}>
+                    <strong>{tr(`workflow.review.autoChecks.${check.key}`)}</strong> · {tr(`workflow.review.autoStatuses.${check.status}`, { defaultValue: check.status })} · {check.message}
+                  </p>)}
+                  <p className="text-muted-foreground">{tr('workflow.review.autoVerifyDone')}</p>
+                </div>}
+              </div>
               <div className="grid gap-4 xl:grid-cols-4">
                 <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <h3 className="text-sm font-semibold">{tr('workflow.review.peTitle')}</h3>
@@ -377,7 +437,13 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                   <Field label={tr('workflow.review.version')} value={String(draft.security_version || '')} onChange={value => updateDraft('security_version', value)} />
                 </div>
                 <div className="space-y-3 rounded-xl border border-border/60 p-4">
-                  <h3 className="text-sm font-semibold">{tr('workflow.review.financial')}</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">{tr('workflow.review.financial')}</h3>
+                    <Button size="sm" variant="outline" disabled={financialFetchBusy || savingReview} onClick={() => void fetchFinancialPrefill()}>
+                      <Download className="mr-1.5 h-3.5 w-3.5" />{financialFetchBusy ? tr('workflow.review.prefillLoading') : tr('workflow.review.prefill')}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] leading-4 text-muted-foreground">{tr('workflow.review.prefillHelp')}</p>
                   <StatusSelect label={tr('workflow.review.financialStatus')} value={String(draft.financial_status || 'pending')} options={['pending', 'passed', 'needs_review', 'rejected']} onChange={value => updateDraft('financial_status', value)} />
                   <Field label={tr('workflow.review.source')} value={String(draft.financial_source || '')} onChange={value => updateDraft('financial_source', value)} />
                   <Field label={tr('workflow.review.evidence')} value={String(draft.financial_evidence || '')} onChange={value => updateDraft('financial_evidence', value)} />
@@ -385,6 +451,7 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                   <label className="block text-[11px] font-medium text-muted-foreground">{tr('workflow.review.financialJson')}</label>
                   <textarea value={financialJson} onChange={event => setFinancialJson(event.target.value)} className="scrollbar min-h-48 w-full rounded-xl border border-border bg-card p-3 font-mono text-[11px] leading-5 focus:outline-none focus:ring-2 focus:ring-primary/20" spellCheck={false} />
                   <p className="text-[10px] leading-4 text-muted-foreground">{tr('workflow.review.financialHelp')}</p>
+                  {financialWarnings.length > 0 && <ul role="status" aria-live="polite" className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[10px] leading-4 text-muted-foreground">{financialWarnings.map((warning, index) => <li key={`${index}-${warning}`} className="break-words">• {warning}</li>)}</ul>}
                 </div>
                 <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <h3 className="text-sm font-semibold">{tr('workflow.review.events')}</h3>
@@ -401,10 +468,10 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
               </div>
               <Field label={tr('workflow.review.note')} value={String(draft.review_note || '')} onChange={value => updateDraft('review_note', value)} />
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" disabled={savingReview} onClick={() => void saveReview('pending')}>{tr('workflow.review.save')}</Button>
-                <Button disabled={savingReview} onClick={() => void saveReview('approve')}><Check className="mr-1.5 h-4 w-4" />{tr('workflow.review.approve')}</Button>
-                <Button variant="outline" disabled={savingReview} onClick={() => void saveReview('hold')}>{tr('workflow.review.hold')}</Button>
-                <Button variant="destructive" disabled={savingReview} onClick={() => void saveReview('reject')}>{tr('workflow.review.reject')}</Button>
+                <Button variant="outline" disabled={savingReview || autoVerifyBusy} onClick={() => void saveReview('pending')}>{tr('workflow.review.save')}</Button>
+                <Button disabled={savingReview || autoVerifyBusy} onClick={() => void saveReview('approve')}><Check className="mr-1.5 h-4 w-4" />{tr('workflow.review.approve')}</Button>
+                <Button variant="outline" disabled={savingReview || autoVerifyBusy} onClick={() => void saveReview('hold')}>{tr('workflow.review.hold')}</Button>
+                <Button variant="destructive" disabled={savingReview || autoVerifyBusy} onClick={() => void saveReview('reject')}>{tr('workflow.review.reject')}</Button>
                 <span className="self-center text-[10px] text-muted-foreground">{tr('workflow.review.audit', { count: review.history?.length || 0 })}</span>
               </div>
             </div>
