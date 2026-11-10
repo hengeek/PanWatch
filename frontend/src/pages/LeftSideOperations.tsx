@@ -516,7 +516,18 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
             <Button onClick={() => void generateReport()} disabled={reportLoading || Boolean(pendingReport) || !snapshotId || candidates.length === 0}>{tr('workflow.ai.generate')}</Button>
           </div>
           {scopedReports.length === 0 ? <Empty text={tr(snapshotId ? 'workflow.ai.empty' : 'workflow.ai.noSnapshot')} /> : scopedReports.map(report => {
-            const candidateScores = candidateScoreRows(report.report || {}).sort((a, b) => (scoreNumber(b, 'total_score') ?? -1) - (scoreNumber(a, 'total_score') ?? -1))
+            const candidateScores = candidateScoreRows(report.report || {}).sort((a, b) => {
+              const totalA = scoreNumber(a, 'total_score')
+              const totalB = scoreNumber(b, 'total_score')
+              if (totalA != null || totalB != null) return (totalB ?? -1) - (totalA ?? -1)
+              const available = (score: CandidateAIScore) => SCORE_DIMENSIONS.reduce((sum, dimension) => {
+                const value = scoreNumber(score, dimension.key)
+                return value == null ? sum : { score: sum.score + value, max: sum.max + dimension.cap }
+              }, { score: 0, max: 0 })
+              const partialA = available(a)
+              const partialB = available(b)
+              return partialA.max === partialB.max ? partialB.score - partialA.score : 0
+            })
             const isPending = report.status === 'queued' || report.status === 'running'
             return (
             <article key={report.report_id} className="space-y-3 rounded-xl border border-border/60 p-4">
