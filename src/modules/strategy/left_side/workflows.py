@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 _CN_TZ = ZoneInfo("Asia/Shanghai")
 _REPORT_LOCK = threading.Lock()
 _REPORT_THREADS: dict[str, threading.Thread] = {}
-_AI_REPORT_VERSION = "left-side-ai-v3"
-_AI_REPORT_PROMPT_VERSION = "market-candidates-plans-holdings-risks-watch-financial-quality-v3"
+_AI_REPORT_VERSION = "left-side-ai-v4"
+_AI_REPORT_PROMPT_VERSION = "market-candidates-plans-holdings-risks-watch-financial-quality-v4"
 _AI_SCORE_BATCH_SIZE = 8
 
 _RISK_SECURITY = {"st", "delisting", "delisted", "conflict", "unknown", "pending"}
@@ -121,6 +121,91 @@ def quality_score(data: dict[str, Any]) -> tuple[float | None, list[str]]:
     return round(score, 4), []
 
 
+def provisional_quality_score(data: dict[str, Any], signal_date: str) -> tuple[float | None, str, list[str]]:
+    """Calculate a clearly provisional Q score from point-in-time public data.
+
+    This does not approve the financial review. It deliberately requires the
+    documented score inputs, positive profit gates, >=10 peers, an unqualified
+    audit opinion, and a non-conflicting independent check. Liquidity evidence
+    remains a separate manual gate because public summaries cannot identify
+    unrestricted cash or verify short-term interest-bearing debt from notes.
+    """
+    missing: list[str] = []
+    required = (
+        "annual_net_profit", "ttm_net_profit", "consolidated_ttm_net_profit", "adjusted_ttm_net_profit",
+        "operating_cash_flow_ttm", "debt_ratio", "debt_peer_percentile", "debt_peer_count",
+        "industry_group", "report_period", "announcement_at", "audit_opinion",
+    )
+    for key in required:
+        if data.get(key) in (None, ""):
+            missing.append(key)
+    for key in ("unrestricted_cash", "short_term_debt"):
+        if data.get(key) in (None, ""):
+            missing.append(key)
+    if missing and any(key in missing for key in required):
+        return None, "unverified", missing
+
+    industry = str(data.get("industry_group") or "").casefold()
+    if any(token.casefold() in industry for token in ("bank", "insurance", "broker", "financial", "银行", "保险", "证券", "多元金融", "期货")):
+        return None, "special_model_required", ["金融行业需专项盈利质量模型", *missing]
+
+    numbers = {key: _num(data.get(key)) for key in (
+        "annual_net_profit", "ttm_net_profit", "consolidated_ttm_net_profit", "adjusted_ttm_net_profit",
+        "operating_cash_flow_ttm", "debt_ratio", "debt_peer_percentile", "debt_peer_count",
+    )}
+    if any(value is None for value in numbers.values()):
+        return None, "unverified", list(dict.fromkeys([*missing, "财务评分数值字段缺失"]))
+    annual = numbers["annual_net_profit"]
+    ttm = numbers["ttm_net_profit"]
+    consolidated_ttm = numbers["consolidated_ttm_net_profit"]
+    adjusted = numbers["adjusted_ttm_net_profit"]
+    operating_cash = numbers["operating_cash_flow_ttm"]
+    debt_ratio = numbers["debt_ratio"]
+    peer_percentile = numbers["debt_peer_percentile"]
+    peer_count = numbers["debt_peer_count"]
+    if annual <= 0 or ttm <= 0 or consolidated_ttm <= 0:
+        return None, "unverified", list(dict.fromkeys([*missing, "年度、TTM归母及合并TTM净利润须为正"]))
+    if peer_count < 10:
+        return None, "unverified", list(dict.fromkeys([*missing, "同行有效样本不足10家"]))
+    if not 0 <= peer_percentile <= 100 or not 0 <= debt_ratio <= 100:
+        return None, "unverified", list(dict.fromkeys([*missing, "负债率或同行分位不在有效范围"]))
+
+    period = _parse_date(str(data.get("report_period") or ""))
+    announced = _parse_date(str(data.get("announcement_at") or ""))
+    as_of = _parse_date(signal_date)
+    if not period or not announced or not as_of or period > announced or announced > as_of:
+        return None, "unverified", list(dict.fromkeys([*missing, "财报期、公告日或榜单信号日无效"]))
+    opinion = str(data.get("audit_opinion") or "")
+    # "无保留意见" itself contains the substring "保留意见". Remove the
+    # unqualified wording first so a standard opinion is not rejected.
+    remaining_opinion = opinion.replace("无保留意见", "").replace("无保留", "")
+    if "无保留" not in opinion or any(token in remaining_opinion for token in ("保留意见", "否定", "无法表示")):
+        return None, "unverified", list(dict.fromkeys([*missing, "审计意见不是标准无保留意见"]))
+
+    metadata = data.get("source_metadata") if isinstance(data.get("source_metadata"), dict) else {}
+    metadata_signal_date = _parse_date(str(metadata.get("signal_date") or ""))
+    if metadata_signal_date and metadata_signal_date != as_of:
+        return None, "unverified", list(dict.fromkeys([*missing, "财务预填信号日期与榜单信号日不一致"]))
+    secondary = metadata.get("secondary_provider") if isinstance(metadata.get("secondary_provider"), dict) else {}
+    cross_check_status = str(secondary.get("status") or "unavailable")
+    if cross_check_status == "conflict":
+        return None, "unverified", list(dict.fromkeys([*missing, "独立数据源存在冲突"]))
+    if cross_check_status == "matched":
+        secondary_period = _parse_date(str(secondary.get("report_period") or ""))
+        metrics = secondary.get("metrics") if isinstance(secondary.get("metrics"), dict) else {}
+        profit_diff = _num(metrics.get("profit_difference_pct"))
+        debt_diff = _num(metrics.get("debt_ratio_difference_pp"))
+        if secondary_period != period or profit_diff is None or profit_diff > 5 or debt_diff is None or debt_diff > 5:
+            return None, "unverified", list(dict.fromkeys([*missing, "独立来源报告期或交叉核对容差未通过"]))
+
+    adjusted_quality = min(1.0, max(0.0, adjusted / ttm))
+    cash_quality = min(1.0, max(0.0, (operating_cash / consolidated_ttm) / 1.2))
+    debt_quality = 1.0 - peer_percentile / 100.0
+    score = round(40 * adjusted_quality + 35 * cash_quality + 25 * debt_quality, 4)
+    status = "provisional" if cross_check_status == "matched" else "single_source_estimate"
+    return score, status, list(dict.fromkeys(missing))
+
+
 def _candidate(db, snapshot_id: str, symbol: str) -> tuple[LeftSideRankingSnapshot, LeftSideRankingItem]:
     snapshot = db.get(LeftSideRankingSnapshot, snapshot_id)
     if not snapshot or snapshot.status not in {"succeeded", "partial"}:
@@ -143,7 +228,14 @@ def get_or_create_review(db, snapshot_id: str, symbol: str) -> LeftSideCandidate
 
 
 def serialize_review(row: LeftSideCandidateReview, db=None) -> dict[str, Any]:
-    score, missing = quality_score(row.financial_data or {})
+    financial_data = row.financial_data or {}
+    score, missing = quality_score(financial_data)
+    metadata = financial_data.get("source_metadata") if isinstance(financial_data.get("source_metadata"), dict) else {}
+    provisional_score, provisional_status, provisional_missing = provisional_quality_score(
+        financial_data, str(metadata.get("signal_date") or "")
+    )
+    if row.financial_status == "passed" and score is not None:
+        provisional_score, provisional_status, provisional_missing = None, "verified", []
     result = {
         "id": row.id,
         "snapshot_id": row.snapshot_id,
@@ -170,6 +262,10 @@ def serialize_review(row: LeftSideCandidateReview, db=None) -> dict[str, Any]:
         "financial_evidence_url": row.financial_evidence_url or "",
         "financial_evidence": row.financial_evidence or "",
         "quality_score": score,
+        "provisional_quality_score": provisional_score,
+        "provisional_earnings_score": round(provisional_score * 0.3, 2) if provisional_score is not None else None,
+        "provisional_quality_status": provisional_status,
+        "provisional_quality_missing": provisional_missing,
         "financial_missing": missing,
         "event_status": row.event_status,
         "event_category": row.event_category or "",
@@ -364,23 +460,38 @@ def list_reviews(db, snapshot_id: str, offset: int = 0, limit: int = 30, status:
 
 def _financial_quality_input(review: LeftSideCandidateReview, signal_date: str) -> dict[str, Any]:
     data = review.financial_data or {}
-    score, missing = quality_score(data)
-    missing = list(missing)
-    if review.financial_status != "passed":
-        missing.append("财务复核尚未通过")
-    if not review.financial_source or not review.financial_evidence:
+    score, score_missing = quality_score(data)
+    missing = list(score_missing)
+    financial_status = "unverified"
+    evidence_complete = bool(review.financial_source and review.financial_evidence)
+    if not evidence_complete:
         missing.append("财务来源或证据摘要缺失")
     announced = _parse_date(str(data.get("announcement_at") or ""))
     report_period = _parse_date(str(data.get("report_period") or ""))
     as_of = _parse_date(signal_date)
+    point_in_time_valid = bool(as_of and announced and report_period and report_period <= announced <= as_of)
     if not announced or not report_period:
         missing.append("财报期或公告日期无效")
     elif as_of and (announced > as_of or report_period > as_of):
         missing.append("财务数据晚于榜单信号日")
     if not as_of:
         missing.append("榜单信号日期无效")
-    if missing:
+    if review.financial_status == "passed" and score is not None and evidence_complete and point_in_time_valid:
+        financial_status = "verified"
+        missing = []
+    elif review.financial_status != "passed" and evidence_complete and point_in_time_valid:
+        provisional, provisional_status, provisional_missing = provisional_quality_score(data, signal_date)
+        if provisional is not None:
+            score = provisional
+            financial_status = provisional_status
+            missing = [*provisional_missing, "财务评分为自动暂估；完整复核尚未通过"]
+        else:
+            score = None
+            financial_status = provisional_status if provisional_status == "special_model_required" else "unverified"
+            missing = [*provisional_missing, "财务复核尚未通过"]
+    else:
         score = None
+        missing.append("财务复核尚未通过" if review.financial_status != "passed" else "财务状态虽为通过但评分或证据条件不完整")
     allowed_data = {key: data[key] for key in _FINANCIAL_REQUIRED if key in data}
     if data.get("review_explanation"):
         allowed_data["review_explanation"] = data["review_explanation"]
@@ -390,7 +501,7 @@ def _financial_quality_input(review: LeftSideCandidateReview, signal_date: str) 
         "financial_evidence": (review.financial_evidence or "")[:1000],
         "financial_evidence_url": review.financial_evidence_url or "",
         "financial_quality_score": score,
-        "financial_quality_status": "verified" if score is not None else "unverified",
+        "financial_quality_status": financial_status,
         "financial_quality_missing": list(dict.fromkeys(missing)),
     }
 
@@ -489,7 +600,7 @@ def generate_ai_report(snapshot_id: str, selected_symbols: list[str] | None = No
             "coverage_status": snapshot.coverage_status or "unverified",
             "admission_allowed": snapshot.status == "succeeded" and snapshot.coverage_status == "verified",
             "candidates": candidates,
-            "data_boundary": "仅输入本快照行情、证券复核状态，以及本信号日前已公告并完成证据复核的财务信息；不包含个人持仓、账户、现金或私人数据。",
+            "data_boundary": "仅输入本快照行情、证券复核状态，以及本信号日前已公告且带有 verified/provisional/single_source_estimate 状态的财务信息；暂估分明确保留待核字段，不等同完整财务复核；不包含个人持仓、账户、现金或私人数据。",
         }
         encoded = json.dumps(frozen_input, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(encoded.encode()).hexdigest()
@@ -591,9 +702,9 @@ def _candidate_score_errors(entry: dict[str, Any], candidate: dict[str, Any] | N
     errors = []
     for key, cap in caps.items():
         value = _num(entry.get(key))
-        if key == "earnings_score" and not candidate_is_quality_verified(candidate):
+        if key == "earnings_score" and not candidate_has_scored_quality(candidate):
             if entry.get(key) is not None:
-                errors.append(f"{symbol} 缺少已核验盈利质量数据时必须将 earnings_score 留空")
+                errors.append(f"{symbol} 缺少可计算的财务质量分时必须将 earnings_score 留空")
             continue
         if value is None or not 0 <= value <= cap:
             errors.append(f"{symbol} 的 {key} 缺失或越界")
@@ -606,10 +717,10 @@ def _candidate_score_errors(entry: dict[str, Any], candidate: dict[str, Any] | N
         errors.append(f"{symbol} 存在缺失分项时总分必须留空")
     quality_score_value = _num((candidate or {}).get("financial_quality_score"))
     earnings_score = _num(entry.get("earnings_score"))
-    if candidate_is_quality_verified(candidate) and quality_score_value is not None:
+    if candidate_has_scored_quality(candidate) and quality_score_value is not None:
         expected_earnings_score = quality_score_value * 0.3
         if earnings_score is None or abs(earnings_score - expected_earnings_score) > 0.05:
-            errors.append(f"{symbol} 的盈利质量分必须等于已核验质量分乘以30%")
+            errors.append(f"{symbol} 的盈利质量分必须等于财务质量分乘以30%")
     review_status = (candidate or {}).get("review_status")
     if entry.get("action") == "buy" and review_status != "approved":
         errors.append(f"{symbol} 尚未完成准入复核，不能标为可买")
@@ -630,9 +741,17 @@ def candidate_is_quality_verified(candidate: dict[str, Any] | None) -> bool:
     )
 
 
+def candidate_has_scored_quality(candidate: dict[str, Any] | None) -> bool:
+    return bool(
+        candidate
+        and candidate.get("financial_quality_status") in {"verified", "provisional", "single_source_estimate"}
+        and _num(candidate.get("financial_quality_score")) is not None
+    )
+
+
 def _finalize_candidate_score(entry: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     result = dict(entry)
-    quality_value = _num(candidate.get("financial_quality_score")) if candidate_is_quality_verified(candidate) else None
+    quality_value = _num(candidate.get("financial_quality_score")) if candidate_has_scored_quality(candidate) else None
     result["earnings_score"] = round(quality_value * 0.3, 2) if quality_value is not None else None
     result["financial_quality_status"] = candidate.get("financial_quality_status") or "unverified"
     result["financial_quality_missing"] = candidate.get("financial_quality_missing") or []
@@ -651,7 +770,7 @@ async def _generate_batched_ai_report(client, frozen_input: dict[str, Any]) -> t
         "action(watch/review/buy/avoid)、rationale、evidence。rationale 不超过24个中文字符，"
         "evidence 不超过48个中文字符，禁止长段解释和引用原始数据；"
         "字符串值不得包含双引号、反斜杠或换行；"
-        "earnings_score和total_score由程序依据已核验财务质量分及其他分项计算，你必须将这两个字段输出为null；缺少已核验盈利数据时盈利质量分保持缺失，不能填0。"
+        "earnings_score和total_score由程序依据带状态的财务质量分及其他分项计算，你必须将这两个字段输出为null；financial_quality_status=provisional或single_source_estimate时该分仅为暂估，不能描述成已核验；没有可计算分时保持缺失，不能填0。"
         "没有资金流或事件证据时必须明确写缺失，不得用行业常识补齐。风险分越高代表越安全。"
         "review_status 不是 approved 时 action 只能为 review 或 watch；admission_allowed 为 false 时所有股票都不得标为 buy。"
     )

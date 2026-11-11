@@ -132,6 +132,65 @@ def test_financial_quality_is_only_shared_with_ai_after_evidence_and_point_in_ti
     assert "财务数据晚于榜单信号日" in future_result["financial_quality_missing"]
 
 
+def test_public_financial_prefill_can_only_create_a_provisional_score_without_liquidity_review():
+    data = {
+        "annual_net_profit": 80,
+        "ttm_net_profit": 100,
+        "consolidated_ttm_net_profit": 100,
+        "adjusted_ttm_net_profit": 50,
+        "operating_cash_flow_ttm": 60,
+        "debt_ratio": 40,
+        "debt_peer_percentile": 40,
+        "debt_peer_count": 10,
+        "unrestricted_cash": None,
+        "short_term_debt": None,
+        "industry_group": "software",
+        "report_period": "2025-12-31",
+        "announcement_at": "2026-03-30",
+        "audit_opinion": "标准无保留意见",
+        "source_metadata": {
+            "signal_date": "2026-11-09",
+            "secondary_provider": {
+                "status": "matched",
+                "report_period": "2025-12-31",
+                "metrics": {"profit_difference_pct": 0, "debt_ratio_difference_pp": 0},
+            },
+        },
+    }
+    score, status, missing = workflows.provisional_quality_score(data, "2026-11-09")
+    review = SimpleNamespace(
+        financial_data=data,
+        financial_status="needs_review",
+        financial_source="AKShare / BaoStock",
+        financial_evidence="Point-in-time public statement values; liquidity notes remain unchecked.",
+        financial_evidence_url="https://example.test/report",
+    )
+
+    result = workflows._financial_quality_input(review, "2026-11-09")
+    candidate = {"financial_quality_score": result["financial_quality_score"], "financial_quality_status": result["financial_quality_status"]}
+    raw_score = {
+        "symbol": "600000", "low_position_score": 20, "earnings_score": None,
+        "trend_flow_score": 10, "risk_safety_score": 5, "total_score": None,
+        "action": "review", "evidence": "provisional financial data",
+    }
+    finalized = workflows._finalize_candidate_score(raw_score, candidate)
+
+    assert score == 52.5
+    assert status == "provisional"
+    assert set(missing) == {"unrestricted_cash", "short_term_debt"}
+    assert result["financial_quality_status"] == "provisional"
+    assert result["financial_quality_score"] == 52.5
+    assert set(result["financial_quality_missing"]) >= {"unrestricted_cash", "short_term_debt"}
+    assert finalized["earnings_score"] == 15.75
+    assert finalized["total_score"] == 50.75
+    assert not workflows._candidate_score_errors(finalized, candidate, admission_allowed=False)
+    assert workflows.provisional_quality_score({**data, "industry_group": "银行Ⅱ"}, "2026-11-09")[1] == "special_model_required"
+    for unqualified in ("标准无保留意见", "带强调事项段的无保留意见", "标准无保留审计意见"):
+        assert workflows.provisional_quality_score({**data, "audit_opinion": unqualified}, "2026-11-09")[0] == 52.5
+    for qualified in ("保留意见", "否定意见", "无法表示意见"):
+        assert workflows.provisional_quality_score({**data, "audit_opinion": qualified}, "2026-11-09")[0] is None
+
+
 def test_ai_earnings_score_uses_verified_quality_or_stays_blank():
     raw_score = {
         "symbol": "600000",

@@ -425,7 +425,7 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                 <span className="font-semibold">{review.symbol} {review.name}</span>
                 <span className="rounded-full bg-accent px-2 py-1">{tr('workflow.review.status')}: {review.review_status}</span>
                 <span className="rounded-full bg-accent px-2 py-1">{tr('columns.pe')} {selectedCandidate?.pe_ttm.toFixed(2) || '—'} · {selectedCandidate?.pe_source || tr('workflow.review.peSourceUnknown')}</span>
-                <span className="rounded-full bg-accent px-2 py-1">Q: {review.quality_score == null ? '—' : review.quality_score.toFixed(2)}</span>
+                <span className="rounded-full bg-accent px-2 py-1">Q: {review.quality_score != null ? `${review.quality_score.toFixed(2)} / 100 · ${tr('workflow.review.financialVerified')}` : review.provisional_quality_score != null ? `${review.provisional_quality_score.toFixed(2)} / 100 · ${tr('workflow.review.financialProvisional')} · ${review.provisional_earnings_score?.toFixed(2) || '0.00'} / 30` : `— · ${tr(`workflow.ai.financialStatuses.${review.provisional_quality_status}`, { defaultValue: review.provisional_quality_status })}`}</span>
                 <span className="text-muted-foreground">{review.financial_missing.join(' · ')}</span>
               </div>
               <div className="space-y-3 rounded-xl border border-border/60 p-4">
@@ -550,6 +550,7 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                       const rationale = readableValue(score.rationale)
                       const evidence = readableValue(score.evidence)
                       const financialQualityStatus = readableValue(score.financial_quality_status)
+                      const financialQualityMissing = Array.isArray(score.financial_quality_missing) ? score.financial_quality_missing.map(readableValue).filter(Boolean).join('、') : ''
                       const knownParts = SCORE_DIMENSIONS.filter(dimension => scoreNumber(score, dimension.key) != null)
                       const knownScore = knownParts.reduce((sum, dimension) => sum + (scoreNumber(score, dimension.key) || 0), 0)
                       const knownMax = knownParts.reduce((sum, dimension) => sum + dimension.cap, 0)
@@ -559,7 +560,7 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                             <div className="flex min-w-0 items-baseline gap-2"><strong className="truncate text-sm">{name || symbol}</strong>{name && <span className="shrink-0 text-[11px] text-muted-foreground">{symbol}</span>}</div>
                             <span className="rounded-full bg-accent px-2 py-1 text-[10px]">{tr(`workflow.ai.actions.${action}`, { defaultValue: action || '—' })}</span>
                           </div>
-                          <div className="flex items-baseline justify-between"><span className="text-[11px] text-muted-foreground">{tr('workflow.ai.total')}</span><strong className="text-lg tabular-nums">{total == null ? '—' : total.toFixed(1)}<span className="text-[10px] font-normal text-muted-foreground"> / 100</span></strong></div>
+                          <div className="flex items-baseline justify-between"><span className="text-[11px] text-muted-foreground">{tr(financialQualityStatus === 'provisional' || financialQualityStatus === 'single_source_estimate' ? 'workflow.ai.totalProvisional' : 'workflow.ai.total')}</span><strong className="text-lg tabular-nums">{total == null ? '—' : total.toFixed(1)}<span className="text-[10px] font-normal text-muted-foreground"> / 100</span></strong></div>
                           {total == null && <p className="text-[10px] text-muted-foreground">{tr('workflow.ai.partialScore', { score: knownScore.toFixed(1), max: knownMax })}</p>}
                           <div className="space-y-1.5">
                             {SCORE_DIMENSIONS.map(dimension => {
@@ -569,7 +570,7 @@ export default function LeftSideOperations({ snapshotId, snapshot, candidates, s
                                 <div key={dimension.key} className="space-y-1">
                                   <div className="flex justify-between gap-2 text-[10px]"><span className="text-muted-foreground">{tr(`workflow.ai.dimensions.${dimension.label}`)}</span><span className="tabular-nums">{value == null ? '—' : value.toFixed(1)} / {dimension.cap}</span></div>
                                   <div role="progressbar" aria-label={tr(`workflow.ai.dimensions.${dimension.label}`)} aria-valuemin={0} aria-valuemax={dimension.cap} aria-valuenow={value == null ? 0 : Math.min(dimension.cap, Math.max(0, value))} className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${barWidth}%` }} /></div>
-                                  {dimension.key === 'earnings_score' && financialQualityStatus !== 'verified' && <p className="text-[10px] leading-4 text-muted-foreground">{tr('workflow.ai.financialQualityPending')}</p>}
+                                  {dimension.key === 'earnings_score' && financialQualityStatus !== 'verified' && <p className="text-[10px] leading-4 text-muted-foreground">{tr(`workflow.ai.financialStatuses.${financialQualityStatus}`, { defaultValue: tr('workflow.ai.financialQualityPending') })}{financialQualityMissing ? ` · ${financialQualityMissing}` : ''}</p>}
                                 </div>
                               )
                             })}
