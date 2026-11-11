@@ -99,6 +99,10 @@ export interface LeftSideReview {
   financial_evidence_url: string
   financial_evidence: string
   quality_score: number | null
+  provisional_quality_score: number | null
+  provisional_earnings_score: number | null
+  provisional_quality_status: string
+  provisional_quality_missing: string[]
   financial_missing: string[]
   event_status: string
   event_category: string
