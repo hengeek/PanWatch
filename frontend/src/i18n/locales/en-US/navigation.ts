@@ -8,6 +8,7 @@ export const navigation = {
     portfolio: 'Portfolio',
     opportunities: 'Opportunities',
     paperTrading: 'Paper trading',
+    leftSide: 'Left-side strategy',
     assistant: 'Assistant',
     alerts: 'Alerts',
     agents: 'Agents',

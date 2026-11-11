@@ -11,6 +11,7 @@ describe('route page loaders', () => {
       'stocks',
       'opportunities',
       'paperTrading',
+      'leftSide',
       'assistant',
       'alerts',
       'agents',
@@ -33,5 +34,9 @@ describe('route page loaders', () => {
 
   it('resolves the recoverable setup page', () => {
     expect(resolveRouteKey('/getting-started')).toBe('gettingStarted')
+  })
+
+  it('resolves the isolated left-side strategy workspace', () => {
+    expect(resolveRouteKey('/strategy-lab')).toBe('leftSide')
   })
 })

@@ -718,6 +718,307 @@ class BacktestRun(Base):
     finished_at = Column(DateTime, nullable=True)
 
 
+class LeftSideRankingSnapshot(Base):
+    """左侧策略独立观察榜批次，不被旧策略执行器消费。"""
+
+    __tablename__ = "left_side_ranking_snapshots"
+    __table_args__ = (
+        Index("ix_left_side_snapshot_created", "created_at"),
+        Index("ix_left_side_snapshot_status_updated", "status", "updated_at"),
+    )
+
+    id = Column(String, primary_key=True)
+    status = Column(String, nullable=False, default="queued")
+    phase = Column(String, nullable=False, default="queued")
+    message = Column(String, default="")
+    signal_date = Column(String, default="")
+    universe_total = Column(Integer, default=0)
+    excluded_st_count = Column(Integer, default=0)
+    fundamentals_checked = Column(Integer, default=0)
+    fundamentals_errors = Column(Integer, default=0)
+    pe_passed = Column(Integer, default=0)
+    history_checked = Column(Integer, default=0)
+    history_passed = Column(Integer, default=0)
+    history_errors = Column(Integer, default=0)
+    risk_pending_count = Column(Integer, default=0)
+    universe_observed_at = Column(String, default="")
+    universe_source = Column(String, default="")
+    universe_age_seconds = Column(Integer, nullable=True)
+    universe_stale = Column(Boolean, default=True)
+    universe_catalogs = Column(JSON, default={})
+    coverage_status = Column(String, nullable=False, default="unverified")
+    coverage_expected_total = Column(Integer, nullable=True)
+    coverage_source = Column(String, default="")
+    coverage_evidence_url = Column(String, default="")
+    coverage_evidence = Column(Text, default="")
+    coverage_as_of = Column(String, default="")
+    coverage_checked_at = Column(String, default="")
+    coverage_checked_by = Column(String, default="")
+    lease_expires_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, default="")
+    parameters = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    finished_at = Column(DateTime, nullable=True)
+
+
+class LeftSideRankingItem(Base):
+    """左侧策略观察榜的独立标的快照。"""
+
+    __tablename__ = "left_side_ranking_items"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "symbol", name="uq_left_side_snapshot_symbol"),
+        Index("ix_left_side_item_snapshot_low", "snapshot_id", "low_composite"),
+        Index("ix_left_side_item_snapshot_close", "snapshot_id", "signal_close"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id = Column(String, ForeignKey("left_side_ranking_snapshots.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    name = Column(String, default="")
+    signal_date = Column(String, default="")
+    signal_close = Column(Float, nullable=False)
+    pe_ttm = Column(Float, nullable=False)
+    low_60 = Column(Float, nullable=True)
+    low_250 = Column(Float, nullable=True)
+    low_1000 = Column(Float, nullable=True)
+    low_composite = Column(Float, nullable=True)
+    drawdown_10 = Column(Float, nullable=True)
+    drawdown_30 = Column(Float, nullable=True)
+    drawdown_90 = Column(Float, nullable=True)
+    signal_open = Column(Float, nullable=True)
+    signal_high = Column(Float, nullable=True)
+    signal_low = Column(Float, nullable=True)
+    risk_status = Column(String, nullable=False, default="pending")
+    admission_status = Column(String, nullable=False, default="observation_only")
+    pe_observed_at = Column(String, default="")
+    pe_source = Column(String, default="")
+    data_source = Column(String, default="")
+    sample_start = Column(String, default="")
+    sample_end = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class LeftSideCandidateReview(Base):
+    """Evidence-backed security, financial and event review for one snapshot candidate."""
+
+    __tablename__ = "left_side_candidate_reviews"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "symbol", name="uq_left_side_review_snapshot_symbol"),
+        Index("ix_left_side_review_status", "snapshot_id", "review_status"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id = Column(String, ForeignKey("left_side_ranking_snapshots.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    name = Column(String, default="")
+    security_status = Column(String, nullable=False, default="pending")
+    security_trading_status = Column(String, nullable=False, default="unknown")
+    security_effective_at = Column(String, default="")
+    security_version = Column(String, default="")
+    security_checked_at = Column(String, default="")
+    security_valid_until = Column(String, default="")
+    security_source = Column(String, default="")
+    security_evidence_url = Column(String, default="")
+    security_evidence = Column(Text, default="")
+    pe_status = Column(String, nullable=False, default="pending")
+    pe_verified_value = Column(Float, nullable=True)
+    pe_checked_at = Column(String, default="")
+    pe_source = Column(String, default="")
+    pe_evidence_url = Column(String, default="")
+    pe_evidence = Column(Text, default="")
+    financial_status = Column(String, nullable=False, default="pending")
+    financial_data = Column(JSON, default={})
+    financial_source = Column(String, default="")
+    financial_evidence_url = Column(String, default="")
+    financial_evidence = Column(Text, default="")
+    event_status = Column(String, nullable=False, default="pending")
+    event_category = Column(String, default="")
+    event_checked_at = Column(String, default="")
+    event_valid_until = Column(String, default="")
+    event_source = Column(String, default="")
+    event_evidence_url = Column(String, default="")
+    event_evidence = Column(Text, default="")
+    review_status = Column(String, nullable=False, default="pending")
+    review_note = Column(Text, default="")
+    reviewer_id = Column(String, default="")
+    reviewer_name = Column(String, default="")
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LeftSideReviewEvent(Base):
+    """Append-only audit events for manual review changes."""
+
+    __tablename__ = "left_side_review_events"
+    __table_args__ = (Index("ix_left_side_review_event_created", "review_id", "created_at"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_id = Column(Integer, ForeignKey("left_side_candidate_reviews.id", ondelete="CASCADE"), nullable=False)
+    snapshot_id = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    previous_state = Column(JSON, default={})
+    next_state = Column(JSON, default={})
+    actor_id = Column(String, default="")
+    actor_name = Column(String, default="")
+    reason = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class LeftSideAIReport(Base):
+    """Versioned AI report generated only from a frozen left-side research snapshot."""
+
+    __tablename__ = "left_side_ai_reports"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "input_fingerprint", name="uq_left_side_report_snapshot_input"),
+        Index("ix_left_side_report_created", "created_at"),
+    )
+
+    id = Column(String, primary_key=True)
+    snapshot_id = Column(String, ForeignKey("left_side_ranking_snapshots.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    report_version = Column(String, nullable=False, default="left-side-ai-v1")
+    prompt_version = Column(String, nullable=False, default="market-candidates-plans-holdings-risks-watch-v1")
+    input_fingerprint = Column(String, nullable=False)
+    input_symbols = Column(JSON, default=[])
+    model_label = Column(String, default="")
+    report = Column(JSON, default={})
+    usage = Column(JSON, default={})
+    validation_status = Column(String, default="pending")
+    validation_errors = Column(JSON, default=[])
+    error_message = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    finished_at = Column(DateTime, nullable=True)
+
+
+class LeftSideConditionalPlan(Base):
+    """A reviewed, conditional research plan. It is never an order or old-system signal."""
+
+    __tablename__ = "left_side_conditional_plans"
+    __table_args__ = (
+        Index("ix_left_side_plan_status_created", "status", "created_at"),
+        UniqueConstraint("idempotency_key", name="uq_left_side_plan_idempotency"),
+    )
+
+    id = Column(String, primary_key=True)
+    idempotency_key = Column(String, nullable=False)
+    snapshot_id = Column(String, ForeignKey("left_side_ranking_snapshots.id", ondelete="CASCADE"), nullable=False)
+    report_id = Column(String, ForeignKey("left_side_ai_reports.id", ondelete="SET NULL"), nullable=True)
+    symbol = Column(String, nullable=False)
+    name = Column(String, default="")
+    industry = Column(String, default="")
+    status = Column(String, nullable=False, default="pending_review")
+    entry_low = Column(Float, nullable=False)
+    entry_high = Column(Float, nullable=False)
+    trigger_price = Column(Float, nullable=True)
+    budget = Column(Float, nullable=True)
+    quantity = Column(Integer, nullable=True)
+    take_profit_rate = Column(Float, nullable=False, default=0.03)
+    target_price = Column(Float, nullable=True)
+    valid_until = Column(String, default="")
+    parameters = Column(JSON, default={})
+    approval_note = Column(Text, default="")
+    reviewer_id = Column(String, default="")
+    reviewer_name = Column(String, default="")
+    approved_at = Column(DateTime, nullable=True)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LeftSideExperimentAccount(Base):
+    """An isolated simulation portfolio owned by the authenticated PanWatch user."""
+
+    __tablename__ = "left_side_experiment_accounts"
+    __table_args__ = (Index("ix_left_side_experiment_owner", "owner_id", "created_at"),)
+
+    id = Column(String, primary_key=True)
+    owner_id = Column(String, nullable=False, default="user")
+    name = Column(String, nullable=False)
+    starting_cash = Column(Float, nullable=False)
+    cash = Column(Float, nullable=False)
+    status = Column(String, nullable=False, default="paused")
+    config = Column(JSON, default={})
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LeftSideExperimentPosition(Base):
+    """Open position within an isolated left-side experiment account."""
+
+    __tablename__ = "left_side_experiment_positions"
+    __table_args__ = (
+        UniqueConstraint("account_id", "symbol", name="uq_left_side_experiment_account_symbol"),
+        Index("ix_left_side_experiment_position_status", "account_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(String, ForeignKey("left_side_experiment_accounts.id", ondelete="CASCADE"), nullable=False)
+    symbol = Column(String, nullable=False)
+    name = Column(String, default="")
+    industry = Column(String, default="")
+    status = Column(String, nullable=False, default="open")
+    quantity = Column(Integer, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    entry_fee = Column(Float, nullable=False, default=0)
+    take_profit_price = Column(Float, nullable=False)
+    entry_plan_id = Column(String, ForeignKey("left_side_conditional_plans.id", ondelete="SET NULL"), nullable=True)
+    strategy_version = Column(String, default="left-side-v1")
+    opened_at = Column(DateTime, nullable=False)
+    closed_at = Column(DateTime, nullable=True)
+    exit_price = Column(Float, nullable=True)
+    exit_fee = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+
+
+class LeftSideExperimentTrade(Base):
+    """Immutable simulated fills; isolated from existing PaperTradingTrade rows."""
+
+    __tablename__ = "left_side_experiment_trades"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_left_side_experiment_trade_idempotency"),
+        Index("ix_left_side_experiment_trade_account_time", "account_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(String, ForeignKey("left_side_experiment_accounts.id", ondelete="CASCADE"), nullable=False)
+    position_id = Column(Integer, ForeignKey("left_side_experiment_positions.id", ondelete="SET NULL"), nullable=True)
+    plan_id = Column(String, ForeignKey("left_side_conditional_plans.id", ondelete="SET NULL"), nullable=True)
+    snapshot_id = Column(String, default="")
+    symbol = Column(String, nullable=False)
+    side = Column(String, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    price = Column(Float, nullable=False)
+    gross_amount = Column(Float, nullable=False)
+    fees = Column(Float, nullable=False, default=0)
+    reason = Column(String, nullable=False)
+    idempotency_key = Column(String, nullable=False)
+    quote_source = Column(String, default="")
+    quote_time = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class LeftSideBacktestRun(Base):
+    """Replay a sequence of persisted snapshots without inventing past universe data."""
+
+    __tablename__ = "left_side_backtest_runs"
+    __table_args__ = (Index("ix_left_side_backtest_created", "created_at"),)
+
+    id = Column(String, primary_key=True)
+    owner_id = Column(String, nullable=False, default="user")
+    status = Column(String, nullable=False, default="queued")
+    snapshot_ids = Column(JSON, default=[])
+    config = Column(JSON, default={})
+    result = Column(JSON, default={})
+    error_message = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    finished_at = Column(DateTime, nullable=True)
+
+
 class StrategyWeight(Base):
     """策略权重（当前生效值）。"""
 
@@ -1473,3 +1774,38 @@ class MCPCallLog(Base):
     duration_ms = Column(Integer, default=0)
     client_ip = Column(String, nullable=True)
     called_at = Column(DateTime, server_default=func.now())
+
+
+class WatchGroup(Base):
+    """用户自定义的跨端关注分组。"""
+
+    __tablename__ = "watch_groups"
+    __table_args__ = (Index("ix_watch_groups_sort", "sort_order", "id"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(40), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    members = relationship(
+        "WatchGroupMember", back_populates="group", cascade="all, delete-orphan",
+        order_by="WatchGroupMember.sort_order, WatchGroupMember.id",
+    )
+
+
+class WatchGroupMember(Base):
+    """自选股票与自定义关注分组的关联。"""
+
+    __tablename__ = "watch_group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "stock_id", name="uq_watch_group_stock"),
+        Index("ix_watch_group_members_stock", "stock_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("watch_groups.id", ondelete="CASCADE"), nullable=False)
+    stock_id = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    group = relationship("WatchGroup", back_populates="members")
+    stock = relationship("Stock")
