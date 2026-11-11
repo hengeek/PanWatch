@@ -353,7 +353,7 @@ Address: `TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
 
 ## Contributing
 
-Issues and pull requests are welcome. See the [contribution guide](CONTRIBUTING.md) for setup, validation, internationalization, custom agents, and market-data sources.
+Issues and pull requests are welcome. See the [contribution guide](CONTRIBUTING.md) for setup, validation, internationalization, custom agents, and market-data sources. AI agents should start from [AGENTS.md](AGENTS.md); project standards, architecture, and requirement/implementation records are indexed in the [documentation guide](docs/README.md).
 
 Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 
