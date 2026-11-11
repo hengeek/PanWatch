@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "name": "PanWatch",
+  "owner": "hengeek",
+  "description": "自托管 AI 股票监控与研究平台：组合管理、行情监控、价格提醒、定时 Agent、纸面交易与 TradingAgents 深度研究。",
+  "template": {
+    "name": "code-foundry",
+    "version": "0.1.1",
+    "source_standard_version": "1.0.0"
+  },
+  "stack": {
+    "kind": "modular-monolith",
+    "backend": {
+      "language": "Python",
+      "minimum_version": "3.10",
+      "docker_version": "3.11",
+      "framework": "FastAPI + Uvicorn",
+      "dependency_files": [
+        "requirements.txt",
+        "requirements-runtime.txt",
+        "requirements-otel.txt"
+      ]
+    },
+    "frontend": {
+      "language": "TypeScript",
+      "framework": "React 18 + Vite 5",
+      "node": "24.14.0",
+      "package_manager": "pnpm@9.15.9",
+      "lockfile": "frontend/pnpm-lock.yaml"
+    },
+    "packages": [
+      "packages/marketdata",
+      "packages/pan-agent-runtime",
+      "packages/pan-agent-token-meter",
+      "packages/pan-agent-tool-research",
+      "packages/pan-investment-research"
+    ]
+  },
+  "profile": "self-hosted-web-pwa",
+  "platforms": [
+    "docker",
+    "web",
+    "pwa"
+  ],
+  "default_branch": "main",
+  "license": "MIT",
+  "external_services": [
+    "OpenAI-compatible AI providers",
+    "Ollama",
+    "market data providers",
+    "TradingAgents",
+    "Telegram",
+    "WeCom",
+    "DingTalk",
+    "Feishu",
+    "Bark",
+    "webhooks"
+  ],
+  "commands": {
+    "help": "make help",
+    "setup": "make setup-backend && pnpm --dir frontend install --frozen-lockfile",
+    "run": "make dev-api",
+    "run_frontend": "make dev-web",
+    "check": "make check",
+    "fmt": null,
+    "test": "make test",
+    "test_frontend": "pnpm --dir frontend exec vitest run",
+    "verify": "make verify",
+    "build": "make build VERSION=<version>",
+    "eval": "make eval",
+    "doctor": "make doctor"
+  },
+  "command_notes": {
+    "run": "后端开发服务器 :8000；前端开发服务器使用 run_frontend（:5183）。",
+    "fmt": "未配置统一格式化工具；提交前至少运行 git diff --check，前端构建包含 tsc -b。",
+    "build": "需要 VERSION 参数，并依赖本机 Docker；产物为 Docker 镜像。",
+    "eval": "chat 评测用例需要 EVAL_AI_BASE_URL / EVAL_AI_API_KEY / EVAL_AI_MODEL。",
+    "verify": "聚合 check、后端测试、前端测试和 packages/*/tests；不替代人工验收与 CI。"
+  },
+  "status": "active",
+  "skills": {
+    "version": "0.1.0",
+    "directory": ".agents/skills",
+    "catalog": "docs/skills.md",
+    "items": [
+      "panwatch-requirements",
+      "panwatch-design",
+      "panwatch-code-review",
+      "panwatch-debugging",
+      "panwatch-delivery-verification",
+      "panwatch-local-delivery"
+    ]
+  },
+  "docs": {
+    "navigation": "docs/README.md",
+    "standard": "docs/standards/development.md",
+    "vision": "docs/product/vision.md",
+    "architecture": "docs/arch/arch.md",
+    "backend_architecture": "src/ARCHITECTURE.md",
+    "contribution": "CONTRIBUTING.zh-CN.md",
+    "pr_policy": "docs/pr-policy.zh-CN.md",
+    "smoke": "docs/tests/smoke.md",
+    "verification": "docs/verification.md"
+  }
+}

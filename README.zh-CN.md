@@ -348,7 +348,7 @@ PanWatch 完全免费开源。如果它节省了你的时间或改善了工作�
 
 ## 贡献
 
-欢迎提交 Issue 和 PR！环境配置、验证、多语言、自定义 Agent 和数据源开发请参考[贡献指南](CONTRIBUTING.zh-CN.md)。
+欢迎提交 Issue 和 PR！环境配置、验证、多语言、自定义 Agent 和数据源开发请参考[贡献指南](CONTRIBUTING.zh-CN.md)。AI Agent 从 [AGENTS.md](AGENTS.md) 开始阅读；开发规范、架构和需求/实施记录见[文档导航](docs/README.md)。
 社区交流（Telegram）：[t.me/panwatch](https://t.me/panwatch)
 
 ## License

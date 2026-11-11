@@ -167,6 +167,7 @@ Document attribution, authentication requirements, rate limits, market coverage,
 - Update both when installation, configuration, screenshots, or user-visible features change.
 - Keep historical compatibility files such as `README.en.md` and `CONTRIBUTING.en.md` working when paths move.
 - Do not present prototypes, local-only files, or unverified behavior as released functionality.
+- Start from the [documentation guide](docs/README.md). Project standards live in `docs/standards/development.md`; AI agents use [AGENTS.md](AGENTS.md). Requirements, implementation plans and acceptance evidence belong in `docs/features/` and `docs/impls/`.
 
 ## Commit messages
 
