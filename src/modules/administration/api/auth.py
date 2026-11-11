@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -159,10 +159,13 @@ def init_auth_from_env(db: Session) -> bool:
 
 
 def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ):
     """验证当前用户（用作依赖）"""
+    request.state.user = None
+
     # 检查是否已设置密码
     password_hash = get_password_hash(db)
     if not password_hash:
@@ -186,6 +189,7 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    request.state.user = "user"
     return "user"
 
 

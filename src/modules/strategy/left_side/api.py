@@ -13,8 +13,11 @@ from src.modules.strategy.left_side import financial_data
 from src.platform.persistence.models import LeftSideAIReport, LeftSideConditionalPlan, LeftSideExperimentAccount, LeftSideRankingSnapshot
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import LeftSideRankingItem
-from src.modules.administration.api.auth import get_current_user
+from src.web.auth import get_current_actor
 from src.web.errors import api_error
+
+# 兼容既有测试和调用方的依赖覆盖名称；实际依赖仍为 get_current_actor。
+get_current_user = get_current_actor
 
 router = APIRouter()
 
@@ -152,7 +155,7 @@ def put_snapshot_coverage(
     snapshot_id: str,
     body: CoverageVerification,
     db: Session = Depends(get_db),
-    actor: str | None = Depends(get_current_user),
+    actor: str | None = Depends(get_current_actor),
 ):
     try:
         return workflows.verify_snapshot_coverage(db, snapshot_id, body.model_dump(), actor)
@@ -263,7 +266,7 @@ def post_auto_verification(
     snapshot_id: str,
     symbol: str,
     db: Session = Depends(get_db),
-    actor: str | None = Depends(get_current_user),
+    actor: str | None = Depends(get_current_actor),
 ):
     from src.modules.strategy.left_side.verification import verify_candidate
 
@@ -282,7 +285,7 @@ def post_financial_prefill(
     snapshot_id: str,
     symbol: str,
     db: Session = Depends(get_db),
-    actor: str | None = Depends(get_current_user),
+    actor: str | None = Depends(get_current_actor),
 ):
     """Return an unsaved public-data draft; approval remains an explicit human action."""
     try:
@@ -298,7 +301,7 @@ def post_financial_prefill(
 
 
 @router.put("/reviews/{snapshot_id}/{symbol}")
-def put_review(snapshot_id: str, symbol: str, body: ReviewUpdate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def put_review(snapshot_id: str, symbol: str, body: ReviewUpdate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     if body.decision not in {"pending", "approve", "hold", "reject"}:
         raise api_error(400, "left_side_review_decision_invalid", "复核决定无效")
     allowed_values = {
@@ -348,7 +351,7 @@ def get_plans(status: str = Query("", max_length=32), db: Session = Depends(get_
 
 
 @router.post("/plans")
-def post_plan(body: PlanCreate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def post_plan(body: PlanCreate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     values = body.model_dump()
     try:
         return workflows.create_plan(db, values, actor)
@@ -364,7 +367,7 @@ def post_plan(body: PlanCreate, db: Session = Depends(get_db), actor: str | None
 
 
 @router.post("/plans/{plan_id}/approve")
-def post_plan_approval(plan_id: str, body: PlanApproval, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def post_plan_approval(plan_id: str, body: PlanApproval, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     try:
         return workflows.approve_plan(db, plan_id, body.model_dump(), actor)
     except ValueError as exc:
@@ -372,7 +375,7 @@ def post_plan_approval(plan_id: str, body: PlanApproval, db: Session = Depends(g
 
 
 @router.post("/plans/{plan_id}/cancel")
-def post_plan_cancellation(plan_id: str, body: PlanCancel, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def post_plan_cancellation(plan_id: str, body: PlanCancel, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     try:
         return workflows.cancel_plan(db, plan_id, actor, body.reason)
     except ValueError as exc:
@@ -380,17 +383,17 @@ def post_plan_cancellation(plan_id: str, body: PlanCancel, db: Session = Depends
 
 
 @router.get("/simulation/accounts")
-def get_experiment_accounts(db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def get_experiment_accounts(db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     return {"items": workflows.list_accounts(db, actor)}
 
 
 @router.post("/simulation/accounts")
-def post_experiment_account(body: ExperimentAccountCreate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def post_experiment_account(body: ExperimentAccountCreate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     return workflows.create_experiment_account(db, body.model_dump(), actor)
 
 
 @router.get("/simulation/accounts/{account_id}")
-def get_experiment_account(account_id: str, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def get_experiment_account(account_id: str, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     try:
         return workflows.account_trades(db, account_id, actor)
     except ValueError as exc:
@@ -398,7 +401,7 @@ def get_experiment_account(account_id: str, db: Session = Depends(get_db), actor
 
 
 @router.patch("/simulation/accounts/{account_id}")
-def patch_experiment_account(account_id: str, body: ExperimentAccountStatusUpdate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def patch_experiment_account(account_id: str, body: ExperimentAccountStatusUpdate, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     try:
         return workflows.set_account_status(db, account_id, actor, body.status)
     except ValueError as exc:
@@ -406,7 +409,7 @@ def patch_experiment_account(account_id: str, body: ExperimentAccountStatusUpdat
 
 
 @router.post("/simulation/accounts/{account_id}/run")
-def run_experiment_day(account_id: str, body: ExperimentRunRequest, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def run_experiment_day(account_id: str, body: ExperimentRunRequest, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     try:
         return workflows.run_experiment_day(db, account_id, actor, body.plan_ids)
     except ValueError as exc:
@@ -419,7 +422,7 @@ def get_backtest_readiness(body: BacktestReadinessRequest, db: Session = Depends
 
 
 @router.post("/backtests/run")
-def post_backtest(body: BacktestRunRequest, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def post_backtest(body: BacktestRunRequest, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     values = body.model_dump()
     snapshot_ids = values.pop("snapshot_ids")
     try:
@@ -429,12 +432,12 @@ def post_backtest(body: BacktestRunRequest, db: Session = Depends(get_db), actor
 
 
 @router.get("/backtests")
-def get_backtests(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def get_backtests(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     return {"items": backtesting.list_runs(db, actor, limit)}
 
 
 @router.get("/backtests/{run_id}")
-def get_backtest(run_id: str, db: Session = Depends(get_db), actor: str | None = Depends(get_current_user)):
+def get_backtest(run_id: str, db: Session = Depends(get_db), actor: str | None = Depends(get_current_actor)):
     run = backtesting.get_run(db, run_id, actor)
     if not run:
         raise api_error(404, "left_side_backtest_not_found", "组合回测记录不存在")
