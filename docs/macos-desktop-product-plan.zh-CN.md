@@ -1,6 +1,6 @@
 # PanWatch macOS 桌面端功能设计
 
-状态：功能方案，尚未实施。基于当前项目网页版及 macOS 第一版梳理。
+状态：产品功能设计和实现对照。核心桌面盯盘能力已进入交付验收；当前范围、限制和未完成项见 [具体实施方案](macos-desktop-implementation-plan.zh-CN.md) 第 13 节。
 
 整体架构、界面结构和 DMG 交付设计见 [macOS 整体设计](macos-desktop-overall-design.zh-CN.md)，后续实施以整体设计中收敛的数据口径与阶段安排为准。
 

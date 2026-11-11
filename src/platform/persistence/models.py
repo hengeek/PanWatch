@@ -1809,3 +1809,6 @@ class WatchGroupMember(Base):
     sort_order = Column(Integer, nullable=False, default=0)
     group = relationship("WatchGroup", back_populates="members")
     stock = relationship("Stock")
+
+
+Index("ux_watch_groups_name_ci", func.lower(WatchGroup.__table__.c.name), unique=True)

@@ -2424,6 +2424,7 @@ CREATE TABLE IF NOT EXISTS watch_group_members (
 """))
     _create_index_if_missing(conn, "ix_watch_groups_sort", "CREATE INDEX ix_watch_groups_sort ON watch_groups(sort_order, id)")
     _create_index_if_missing(conn, "ix_watch_group_members_stock", "CREATE INDEX ix_watch_group_members_stock ON watch_group_members(stock_id)")
+    _create_index_if_missing(conn, "ux_watch_groups_name_ci", "CREATE UNIQUE INDEX ux_watch_groups_name_ci ON watch_groups(lower(name))")
 
 
 MIGRATIONS: tuple[Migration, ...] = (

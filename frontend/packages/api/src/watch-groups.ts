@@ -23,6 +23,8 @@ export const watchGroupsApi = {
     fetchAPI<WatchGroup>(`/watch-groups/${id}`, { method: 'PATCH', body: JSON.stringify({ name, version }) }),
   remove: (id: number, version: number) =>
     fetchAPI<{ ok: boolean; id: number }>(`/watch-groups/${id}?version=${version}`, { method: 'DELETE' }),
+  setOrder: (items: Array<{ group_id: number; sort_order: number; version: number }>) =>
+    fetchAPI<{ items: WatchGroup[] }>('/watch-groups/order', { method: 'PUT', body: JSON.stringify({ items }) }),
   setMembersBatch: (groups: Array<{ group_id: number; stock_ids: number[]; version: number }>) =>
     fetchAPI<{ items: WatchGroup[] }>('/watch-groups/members', {
       method: 'PUT', body: JSON.stringify({ groups }),
