@@ -2,7 +2,7 @@
 name: panwatch-local-delivery
 description: "为 PanWatch 的功能开发或修复完成本地隔离验收、证据报告、自动创建或更新 PR 并附上测试报告，以及人工验收交接。用户要求完整交付、本地真实 UI 验收或验收报告时使用；按本次需求生成业务用例。"
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # PanWatch 本地验收与交付
@@ -29,7 +29,7 @@ metadata:
 4. 实服验收前读取 [PanWatch 隔离与运行](references/isolation.md)，用 [隔离准备工具](scripts/isolated_qa.py) 导出包含当前改动的源码，核验配置、写入路径、模块来源及前端产物。路径越界或身份不一致时先修复隔离问题。
 5. 读取 [真实验收与证据](references/acceptance.md)，通过正常 Web UI、实际 API 鉴权和生产执行路径验证需求，核对持久化结果。模拟测试、真实模型、真实行情及受控故障分别标注。
 6. 业务失败保留精简证据并修复。源码变化后创建新 run，重建产物，重跑相关场景；新报告引用新版本。旧 run 被替代后，先归档失败结果及必要证据，再关闭并清理重型资源，不长期堆积完整副本。
-7. 读取 [报告与 PR 交付](references/delivery.md)，生成脱敏的离线 HTML 和独立 ZIP，核验解压、内容和 SHA256。实现代码、测试及可复用技能可提交；执行报告、截图、JSON、`.docs/` 和 `AGENTS.md` 不进入源码提交。
+7. 读取 [报告与 PR 交付](references/delivery.md)，生成脱敏的离线 HTML 和独立 ZIP，核验解压、内容和 SHA256。实现代码、测试及可复用技能可提交；执行报告、截图、JSON 和 `.docs/` 不进入源码提交。项目根 `AGENTS.md` 是版本库内的正式 Agent 入口，应随项目文档改动提交；只有隔离 QA run 内生成的临时 `AGENTS.md` 或本地规则不提交。
 8. 完整交付时自动创建／更新 PR，按 [GitHub PR 附件交付](references/github-pr-attachments.md) 上传测试报告 ZIP，将下载链接和 SHA256 写入 PR 正文，并回下载核验。仍待人工验收时只保留一套明确交接的最终 QA 环境、同一数据和登录页面。验收／任务结束、用户要求清理，或核实关联 PR 已合并后，按 [关闭测试环境](references/isolation.md#关闭测试环境) 及 [资源清理](references/cleanup.md) 先停服务、归档精简证据，再删除本任务临时资源；不只关进程而保留整套大文件。用户明确要求继续保留时遵循其范围。
 
 ## 验收结论

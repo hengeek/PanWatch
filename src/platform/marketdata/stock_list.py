@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = get_data_dir()
 CACHE_FILE = DATA_DIR / "stock_list_cache.json"
 CACHE_TTL = 86400 * 7  # 7 days
-CACHE_VERSION = 2  # Include listed ETFs; refresh pre-ETF catalogs once.
+CACHE_VERSION = 3  # Persist source-level catalog status and timestamps.
 
 # 东方财富 A 股（使用 push2delay 域名，避免重定向）
 EASTMONEY_URL = "http://80.push2delay.eastmoney.com/api/qt/clist/get"
@@ -117,10 +117,25 @@ def _load_cache(*, allow_stale: bool = False) -> list[dict] | None:
     return None
 
 
-def _save_cache(stocks: list[dict], *, ttl: int = CACHE_TTL):
+def _save_cache(
+    stocks: list[dict],
+    *,
+    ttl: int = CACHE_TTL,
+    catalogs: dict[str, dict] | None = None,
+):
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"version": CACHE_VERSION, "ts": time.time(), "ttl": ttl, "stocks": stocks}, f, ensure_ascii=False)
+        json.dump(
+            {
+                "version": CACHE_VERSION,
+                "ts": time.time(),
+                "ttl": ttl,
+                "stocks": stocks,
+                "catalogs": catalogs or {},
+            },
+            f,
+            ensure_ascii=False,
+        )
 
 
 HEADERS = {
@@ -359,6 +374,7 @@ def refresh_stock_list() -> list[dict]:
     """Fetch stocks and listed ETFs; retain failed catalogs without retaining delistings."""
     stocks = []
     failed = set()
+    catalog_status: dict[str, dict] = {}
     catalogs = (
         ("CN", _fetch_from_eastmoney),
         ("HK", _fetch_hk_from_eastmoney),
@@ -371,21 +387,27 @@ def refresh_stock_list() -> list[dict]:
             items = fetch()
             if not items:
                 raise ValueError("empty catalog")
+            catalog_status[catalog] = {"source": "eastmoney", "count": len(items), "available": True}
         except Exception as exc:
             logger.warning("%s catalog fetch failed: %s", catalog, exc)
             items = []
             if catalog == "CN":
                 try:
                     items = _akshare_fallback().result(timeout=15)
+                    if items:
+                        catalog_status[catalog] = {"source": "akshare_fallback", "count": len(items), "available": True}
                 except Exception as fallback_exc:
                     logger.warning("A-share fallback failed: %s", fallback_exc)
             elif catalog == "ETF":
                 try:
                     items = _fetch_etf_from_sina()
+                    if items:
+                        catalog_status[catalog] = {"source": "sina_fallback", "count": len(items), "available": True}
                 except Exception as fallback_exc:
                     logger.warning("ETF fallback failed: %s", fallback_exc)
             if not items:
                 failed.add(catalog)
+                catalog_status[catalog] = {"source": "unavailable", "count": 0, "available": False}
         stocks.extend(items)
 
     previous = _load_cache(allow_stale=True) or []
@@ -396,7 +418,7 @@ def refresh_stock_list() -> list[dict]:
         by_key.setdefault(key, {**item, "asset_type": infer_asset_type(item["name"], item.get("asset_type"))})
     stocks = list(by_key.values())
     if stocks:
-        _save_cache(stocks, ttl=300 if failed else CACHE_TTL)
+        _save_cache(stocks, ttl=300 if failed else CACHE_TTL, catalogs=catalog_status)
     return stocks
 
 
@@ -406,6 +428,50 @@ def get_stock_list() -> list[dict]:
     if cached:
         return cached
     return refresh_stock_list() or _load_cache(allow_stale=True) or []
+
+
+def get_stock_list_metadata() -> dict:
+    """Return the cache's observed age and catalog coverage without refreshing it."""
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as cache_file:
+            data = json.load(cache_file)
+        generated_at = float(data.get("ts") or 0)
+        ttl = int(data.get("ttl") or CACHE_TTL)
+        age_seconds = max(0, int(time.time() - generated_at)) if generated_at else None
+        catalogs = data.get("catalogs") or {}
+        catalogs_available = bool(catalogs) and all(
+            isinstance(item, dict) and item.get("available") is True
+            for item in catalogs.values()
+        )
+        cn_catalogs_available = all(
+            isinstance(catalogs.get(key), dict) and catalogs[key].get("available") is True
+            for key in ("CN", "BJ")
+        )
+        return {
+            "generated_at": generated_at,
+            "age_seconds": age_seconds,
+            "ttl_seconds": ttl,
+            "fresh": age_seconds is not None and age_seconds <= ttl,
+            "source": "cache_metadata" if catalogs else "legacy_cache_source_unknown",
+            "catalogs": catalogs,
+            "catalogs_available": catalogs_available,
+            "cn_catalogs_available": cn_catalogs_available,
+            "stock_count": len(data.get("stocks") or []),
+            "catalog_coverage_verified": False,
+        }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {
+            "generated_at": None,
+            "age_seconds": None,
+            "ttl_seconds": CACHE_TTL,
+            "fresh": False,
+            "source": "unavailable",
+            "catalogs": {},
+            "catalogs_available": False,
+            "cn_catalogs_available": False,
+            "stock_count": 0,
+            "catalog_coverage_verified": False,
+        }
 
 
 def _normalize_symbol(code: str, market: str) -> str:

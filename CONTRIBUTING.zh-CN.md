@@ -167,6 +167,7 @@ git diff --check
 - 安装、配置、截图或用户功能变化时同步更新两份文档。
 - 路径迁移时保持 `README.en.md`、`CONTRIBUTING.en.md` 等历史兼容入口可用。
 - 不要把原型、本地文件或未经验证的行为描述成已发布能力。
+- 从[文档导航](docs/README.md)进入详细文档。项目规范在 `docs/standards/development.md`；AI Agent 使用 [AGENTS.md](AGENTS.md)。需求、实施方案和验收证据写入 `docs/features/` 与 `docs/impls/`。
 
 ## 提交信息
 

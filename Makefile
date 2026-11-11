@@ -1,4 +1,4 @@
-.PHONY: help setup-backend dev-api dev-web build test test-notify eval doctor install-hooks clean-venv
+.PHONY: help setup-backend dev-api dev-web build check test test-notify verify eval doctor install-hooks clean-venv
 
 # 端口约定：
 #   - 后端：:8000（Docker / 本地 dev 统一，避免存量用户升级困惑）
@@ -25,8 +25,10 @@ help:
 	@echo "  make setup-backend   创建 venv 并安装后端依赖"
 	@echo "  make dev-api         启动后端（:8000，自动 setup-backend）"
 	@echo "  make dev-web         启动前端（:5183，自动 pnpm install）"
+	@echo "  make check           后端编译 + 前端 UI/i18n/市场色 + 空白符检查"
 	@echo "  make test            跑全部单测（默认不发通知）"
 	@echo "  make test-notify     跑全部单测（实际发送通知）"
+	@echo "  make verify          check + 后端/前端/独立包测试"
 	@echo "  make eval            跑 Agent 过程评测集（chat 用例需 EVAL_AI_* 环境变量）"
 	@echo "  make doctor          系统自检(数据源/AI/通知/DB/磁盘/调度)"
 	@echo "  make build VERSION=x 构建前端 + Docker 镜像"
@@ -67,11 +69,21 @@ else
 	cd frontend && pnpm install --no-frozen-lockfile && pnpm dev
 endif
 
+check:
+	@$(VENV_PYTHON) -m compileall -q src server.py packages tests
+	@cd frontend && pnpm check:ui && pnpm check:i18n && pnpm check:market-colors
+	@git diff --check
+
 test:
 	@$(VENV_PYTHON) -m pytest tests/ -v
 
 test-notify:
 	@$(VENV_PYTHON) -m pytest tests/ -v --notify
+
+# 聚合本地检查；仍不替代人工验收、真实外部调用或 CI。
+verify: check test
+	@cd frontend && pnpm exec vitest run
+	@$(VENV_PYTHON) -c "import pathlib, subprocess, sys; [subprocess.check_call([sys.executable, '-m', 'pytest', str(path), '-q']) for path in sorted(pathlib.Path('packages').glob('*/tests'))]"
 
 # Agent 过程评测(工具选择/参数/有据性/结构化输出/动作白名单):
 #   - 结构化解析用例纯规则,直接跑

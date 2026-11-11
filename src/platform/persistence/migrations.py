@@ -2238,8 +2238,171 @@ def _m139_retire_session_legacy(conn: Connection) -> None:
                      {"id": identity, "config": json.dumps(config, ensure_ascii=False)})
 
 
+def _m140_left_side_ranking_indexes(conn: Connection) -> None:
+    """Index the isolated, append-only left-side observation snapshots."""
+    if not _has_table(conn, "left_side_ranking_snapshots") or not _has_table(conn, "left_side_ranking_items"):
+        return
+    _create_index_if_missing(
+        conn,
+        "ix_left_side_snapshot_created",
+        "CREATE INDEX ix_left_side_snapshot_created ON left_side_ranking_snapshots (created_at)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_left_side_snapshot_status_updated",
+        "CREATE INDEX ix_left_side_snapshot_status_updated ON left_side_ranking_snapshots (status, updated_at)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_left_side_item_snapshot_low",
+        "CREATE INDEX ix_left_side_item_snapshot_low ON left_side_ranking_items (snapshot_id, low_composite)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_left_side_item_snapshot_close",
+        "CREATE INDEX ix_left_side_item_snapshot_close ON left_side_ranking_items (snapshot_id, signal_close)",
+    )
+
+
+def _m141_left_side_research_workflows(conn: Connection) -> None:
+    """Add point-in-time catalog evidence and indexes for isolated review workflows."""
+    for column, sql in (
+        ("universe_observed_at", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN universe_observed_at TEXT DEFAULT ''"),
+        ("universe_source", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN universe_source TEXT DEFAULT ''"),
+        ("universe_age_seconds", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN universe_age_seconds INTEGER"),
+        ("universe_stale", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN universe_stale INTEGER DEFAULT 1"),
+        ("universe_catalogs", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN universe_catalogs JSON DEFAULT '{}'"),
+        ("coverage_status", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_status TEXT DEFAULT 'unverified'"),
+        ("lease_expires_at", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN lease_expires_at DATETIME"),
+    ):
+        _add_column_if_missing(conn, "left_side_ranking_snapshots", column, sql)
+    for column in ("signal_open", "signal_high", "signal_low"):
+        _add_column_if_missing(
+            conn,
+            "left_side_ranking_items",
+            column,
+            f"ALTER TABLE left_side_ranking_items ADD COLUMN {column} REAL",
+        )
+    indexes = (
+        ("ix_left_side_review_status", "CREATE INDEX ix_left_side_review_status ON left_side_candidate_reviews (snapshot_id, review_status)"),
+        ("ix_left_side_review_event_created", "CREATE INDEX ix_left_side_review_event_created ON left_side_review_events (review_id, created_at)"),
+        ("ix_left_side_report_created", "CREATE INDEX ix_left_side_report_created ON left_side_ai_reports (created_at)"),
+        ("ix_left_side_plan_status_created", "CREATE INDEX ix_left_side_plan_status_created ON left_side_conditional_plans (status, created_at)"),
+        ("ix_left_side_experiment_owner", "CREATE INDEX ix_left_side_experiment_owner ON left_side_experiment_accounts (owner_id, created_at)"),
+        ("ix_left_side_experiment_position_status", "CREATE INDEX ix_left_side_experiment_position_status ON left_side_experiment_positions (account_id, status)"),
+        ("ix_left_side_experiment_trade_account_time", "CREATE INDEX ix_left_side_experiment_trade_account_time ON left_side_experiment_trades (account_id, created_at)"),
+        ("ix_left_side_backtest_created", "CREATE INDEX ix_left_side_backtest_created ON left_side_backtest_runs (created_at)"),
+    )
+    for name, sql in indexes:
+        _create_index_if_missing(conn, name, sql)
+    if _has_table(conn, "left_side_ranking_snapshots"):
+        active = conn.execute(
+            text("SELECT id FROM left_side_ranking_snapshots WHERE status IN ('queued', 'running') ORDER BY created_at DESC, id DESC")
+        ).fetchall()
+        for row in active[1:]:
+            conn.execute(
+                text("UPDATE left_side_ranking_snapshots SET status='failed', phase='failed', message='应用更新时发现重复活动任务，已安全结束', error_message='duplicate active snapshot recovered during migration', finished_at=CURRENT_TIMESTAMP WHERE id=:id"),
+                {"id": row[0]},
+            )
+        _create_index_if_missing(
+            conn,
+            "uq_left_side_single_active_snapshot",
+            "CREATE UNIQUE INDEX uq_left_side_single_active_snapshot ON left_side_ranking_snapshots ((1)) WHERE status IN ('queued', 'running')",
+        )
+
+
+def _m142_left_side_evidence_and_simulation(conn: Connection) -> None:
+    """Track risk-state version and replay quote provenance for the isolated workspace."""
+    for column, sql in (
+        ("security_trading_status", "ALTER TABLE left_side_candidate_reviews ADD COLUMN security_trading_status TEXT DEFAULT 'unknown'"),
+        ("security_effective_at", "ALTER TABLE left_side_candidate_reviews ADD COLUMN security_effective_at TEXT DEFAULT ''"),
+        ("security_version", "ALTER TABLE left_side_candidate_reviews ADD COLUMN security_version TEXT DEFAULT ''"),
+        ("event_checked_at", "ALTER TABLE left_side_candidate_reviews ADD COLUMN event_checked_at TEXT DEFAULT ''"),
+        ("event_valid_until", "ALTER TABLE left_side_candidate_reviews ADD COLUMN event_valid_until TEXT DEFAULT ''"),
+    ):
+        _add_column_if_missing(conn, "left_side_candidate_reviews", column, sql)
+    for table, column, sql in (
+        ("left_side_conditional_plans", "industry", "ALTER TABLE left_side_conditional_plans ADD COLUMN industry TEXT DEFAULT ''"),
+        ("left_side_experiment_positions", "industry", "ALTER TABLE left_side_experiment_positions ADD COLUMN industry TEXT DEFAULT ''"),
+        ("left_side_experiment_trades", "quote_source", "ALTER TABLE left_side_experiment_trades ADD COLUMN quote_source TEXT DEFAULT ''"),
+        ("left_side_experiment_trades", "quote_time", "ALTER TABLE left_side_experiment_trades ADD COLUMN quote_time TEXT DEFAULT ''"),
+    ):
+        _add_column_if_missing(conn, table, column, sql)
+
+
+def _m143_left_side_coverage_evidence(conn: Connection) -> None:
+    """Store the evidence used by an operator to verify a point-in-time universe count."""
+    for column, sql in (
+        ("coverage_expected_total", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_expected_total INTEGER"),
+        ("coverage_source", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_source TEXT DEFAULT ''"),
+        ("coverage_evidence_url", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_evidence_url TEXT DEFAULT ''"),
+        ("coverage_evidence", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_evidence TEXT DEFAULT ''"),
+        ("coverage_checked_at", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_checked_at TEXT DEFAULT ''"),
+    ):
+        _add_column_if_missing(conn, "left_side_ranking_snapshots", column, sql)
+
+
+def _m144_left_side_coverage_audit(conn: Connection) -> None:
+    """Keep the point-in-time date and operator attached to coverage evidence."""
+    for column, sql in (
+        ("coverage_as_of", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_as_of TEXT DEFAULT ''"),
+        ("coverage_checked_by", "ALTER TABLE left_side_ranking_snapshots ADD COLUMN coverage_checked_by TEXT DEFAULT ''"),
+    ):
+        _add_column_if_missing(conn, "left_side_ranking_snapshots", column, sql)
+
+
+def _m145_left_side_pe_source(conn: Connection) -> None:
+    """Keep the configured provider alongside the strict TTM PE hard gate."""
+    _add_column_if_missing(
+        conn,
+        "left_side_ranking_items",
+        "pe_source",
+        "ALTER TABLE left_side_ranking_items ADD COLUMN pe_source TEXT DEFAULT ''",
+    )
+
+
+def _m146_left_side_pe_review(conn: Connection) -> None:
+    """Require an independently sourced, auditable TTM PE confirmation to admit a plan."""
+    for column, sql in (
+        ("pe_status", "ALTER TABLE left_side_candidate_reviews ADD COLUMN pe_status TEXT DEFAULT 'pending'"),
+        ("pe_verified_value", "ALTER TABLE left_side_candidate_reviews ADD COLUMN pe_verified_value REAL"),
+        ("pe_checked_at", "ALTER TABLE left_side_candidate_reviews ADD COLUMN pe_checked_at TEXT DEFAULT ''"),
+        ("pe_source", "ALTER TABLE left_side_candidate_reviews ADD COLUMN pe_source TEXT DEFAULT ''"),
+        ("pe_evidence_url", "ALTER TABLE left_side_candidate_reviews ADD COLUMN pe_evidence_url TEXT DEFAULT ''"),
+        ("pe_evidence", "ALTER TABLE left_side_candidate_reviews ADD COLUMN pe_evidence TEXT DEFAULT ''"),
+    ):
+        _add_column_if_missing(conn, "left_side_candidate_reviews", column, sql)
+
+
+def _m147_left_side_snapshot_counters_and_pe_observation(conn: Connection) -> None:
+    """Add fields used by current left-side status, snapshot and ranking queries.
+
+    These columns were added to the ORM after the initial left-side table rollout.
+    Existing databases keep their tables when ``create_all`` runs, so omitting this
+    migration makes the new workbench return 500 while ORM queries select the rows.
+    """
+    for table, column, sql in (
+        (
+            "left_side_ranking_snapshots",
+            "fundamentals_errors",
+            "ALTER TABLE left_side_ranking_snapshots ADD COLUMN fundamentals_errors INTEGER DEFAULT 0",
+        ),
+        (
+            "left_side_ranking_snapshots",
+            "history_errors",
+            "ALTER TABLE left_side_ranking_snapshots ADD COLUMN history_errors INTEGER DEFAULT 0",
+        ),
+        (
+            "left_side_ranking_items",
+            "pe_observed_at",
+            "ALTER TABLE left_side_ranking_items ADD COLUMN pe_observed_at TEXT DEFAULT ''",
+        ),
+    ):
+        _add_column_if_missing(conn, table, column, sql)
+
+
 def _m148_watch_groups(conn: Connection) -> None:
-    """Create synchronized custom watch groups and stock memberships."""
+    """Create synchronized user watch groups and their stock membership rows."""
     conn.execute(text("""
 CREATE TABLE IF NOT EXISTS watch_groups (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2304,6 +2467,14 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(137, "stock_asset_type", _m137_stock_asset_type),
     Migration(138, "investment_research_delivery", _m138_investment_research),
     Migration(139, "retire_session_legacy", _m139_retire_session_legacy),
+    Migration(140, "left_side_ranking_indexes", _m140_left_side_ranking_indexes),
+    Migration(141, "left_side_research_workflows", _m141_left_side_research_workflows),
+    Migration(142, "left_side_evidence_and_simulation", _m142_left_side_evidence_and_simulation),
+    Migration(143, "left_side_coverage_evidence", _m143_left_side_coverage_evidence),
+    Migration(144, "left_side_coverage_audit", _m144_left_side_coverage_audit),
+    Migration(145, "left_side_pe_source", _m145_left_side_pe_source),
+    Migration(146, "left_side_pe_review", _m146_left_side_pe_review),
+    Migration(147, "left_side_snapshot_counters_and_pe_observation", _m147_left_side_snapshot_counters_and_pe_observation),
     Migration(148, "watch_groups", _m148_watch_groups),
 )
 

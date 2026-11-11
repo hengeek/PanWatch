@@ -207,8 +207,10 @@ class FailoverAIClient:
                         retry_kwargs = dict(kwargs)
                         retry_kwargs["temperature"] = None
                         # Some OpenAI-compatible services reject max_tokens;
-                        # a summary can still fall back to local normalization.
+                        # some also reject response_format. Retry without optional
+                        # formatting limits before moving to the next model.
                         retry_kwargs.pop("max_tokens", None)
+                        retry_kwargs.pop("response_format", None)
                         result = await method(*args, **retry_kwargs)
                         _mark_ok(label)
                         self.used_model_label = label
@@ -241,8 +243,11 @@ class FailoverAIClient:
         messages: list[dict],
         temperature: float | None = 0.4,
         max_tokens: int | None = None,
+        response_format: dict | None = None,
     ) -> str:
         kwargs = {"max_tokens": max_tokens} if max_tokens is not None else {}
+        if response_format is not None:
+            kwargs["response_format"] = response_format
         return await self._run(
             "chat_multi", messages, temperature=temperature, **kwargs
         )

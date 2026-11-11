@@ -313,6 +313,9 @@ class MarketData:
             req = Request(symbols=tuple(s.code for s in syms), market=mkt)
             resp = self._fundamentals_engine.fetch(req)
             if resp.ok and resp.data:
+                for row in resp.data:
+                    if not row.source:
+                        row.source = resp.vendor
                 out.extend(resp.data)
         return out
 
