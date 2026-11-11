@@ -1,6 +1,7 @@
 import { auth as enAuth } from './locales/en-US/auth'
 import { common as enCommon } from './locales/en-US/common'
 import { configuration as enConfiguration } from './locales/en-US/configuration'
+import { desktop as enDesktop } from './locales/en-US/desktop'
 import { navigation as enNavigation } from './locales/en-US/navigation'
 import { settings as enSettings } from './locales/en-US/settings'
 import { bizUi as enBizUi } from './locales/en-US/biz-ui'
@@ -8,6 +9,7 @@ import { leftSide as enLeftSide } from './locales/en-US/left-side'
 import { auth as zhAuth } from './locales/zh-CN/auth'
 import { common as zhCommon } from './locales/zh-CN/common'
 import { configuration as zhConfiguration } from './locales/zh-CN/configuration'
+import { desktop as zhDesktop } from './locales/zh-CN/desktop'
 import { navigation as zhNavigation } from './locales/zh-CN/navigation'
 import { settings as zhSettings } from './locales/zh-CN/settings'
 import { bizUi as zhBizUi } from './locales/zh-CN/biz-ui'
@@ -22,6 +24,7 @@ export const zhCN = {
   settings: zhSettings,
   bizUi: zhBizUi,
   leftSide: zhLeftSide,
+  desktop: zhDesktop,
 } as const
 
 export const enUS = {
@@ -32,6 +35,7 @@ export const enUS = {
   settings: enSettings,
   bizUi: enBizUi,
   leftSide: enLeftSide,
+  desktop: enDesktop,
 } as const satisfies TranslationShape<typeof zhCN>
 
 export const resources = {

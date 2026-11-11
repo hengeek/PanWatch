@@ -8,6 +8,7 @@ export const resourceLoaders = {
     settings: () => import('./locales/zh-CN/settings').then(m => m.settings),
     bizUi: () => import('./locales/zh-CN/biz-ui').then(m => m.bizUi),
     leftSide: () => import('./locales/zh-CN/left-side').then(m => m.leftSide),
+    desktop: () => import('./locales/zh-CN/desktop').then(m => m.desktop),
   },
   'en-US': {
     common: () => import('./locales/en-US/common').then(m => m.common),
@@ -17,5 +18,6 @@ export const resourceLoaders = {
     settings: () => import('./locales/en-US/settings').then(m => m.settings),
     bizUi: () => import('./locales/en-US/biz-ui').then(m => m.bizUi),
     leftSide: () => import('./locales/en-US/left-side').then(m => m.leftSide),
+    desktop: () => import('./locales/en-US/desktop').then(m => m.desktop),
   },
 } as const
