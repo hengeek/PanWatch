@@ -4,6 +4,8 @@
 
 整体架构、界面结构和 DMG 交付设计见 [macOS 整体设计](macos-desktop-overall-design.zh-CN.md)，后续实施以整体设计中收敛的数据口径与阶段安排为准。
 
+行情中心与完整个股页的扩展提案见 [FEAT-002 行情中心与个股详情](features/FEAT-002-market-center-and-stock-detail.md)，设计稿见 [行情中心](prototypes/macos-market-center-v1.png) 与 [个股详情](prototypes/macos-stock-detail-v1.png)。该提案拟新增一级导航「行情」，目前为 draft，尚未改变本文 V0.2–V0.4 的既有范围。
+
 
 ## 产品目标
 

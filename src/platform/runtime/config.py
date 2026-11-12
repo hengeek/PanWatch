@@ -14,6 +14,9 @@ from src.platform.marketdata.instruments import infer_asset_type
 class Settings(BaseSettings):
     """环境变量配置"""
 
+    # 服务端监听端口（本地开发可在 .env 中用 PORT 覆盖；默认保持 8000）
+    port: int = Field(default=8000, ge=1, le=65_535)
+
     # AI
     ai_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     ai_api_key: str = ""
