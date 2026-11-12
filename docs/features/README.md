@@ -11,11 +11,11 @@
 
 ## 活跃需求
 
-当前没有登记中的需求文档。新需求从 [feature-spec 样板](../templates/feature-spec.md) 复制后填写，并在下表登记。
+当前有一条草案需求（draft）；新需求从 [feature-spec 样板](../templates/feature-spec.md) 复制后填写，并在下表登记。
 
 | 编号 | 名称 | 状态 | 负责人 | 实施计划 | 更新时间 |
 |---|---|---|---|---|---|
-|  |  |  |  |  |  |
+| [FEAT-002](FEAT-002-market-center-and-stock-detail.md) | macOS 行情中心与个股详情 | draft | 待确认 | [plan](../impls/FEAT-002-market-center-and-stock-detail.plan.md) | 2026-11-12 |
 
 ## 归档
 

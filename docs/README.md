@@ -42,6 +42,8 @@
 
 ## 素材与历史
 
+- [`design/`](design/README.md)：pen.dev 可编辑设计源文件（`.pen`），是界面设计的事实源。
+- `prototypes/`：设计稿导出的 PNG，用于评审、文档展示和无法打开 pen.dev 的场景。
 - `screenshots/`、`diagrams/`、`sponsors/`、`donate/`：对外文档使用的图片资源。
 - 已交付、被替代或取消的需求与实施文档迁入对应 `archive/`，索引保留链接。
 - `docs/superpowers/` 与 `.superpowers/` 为本地设计记录，已被 `.gitignore` 忽略，不属于版本库事实源。

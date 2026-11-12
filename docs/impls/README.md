@@ -14,11 +14,11 @@
 
 ## 活跃实施
 
-当前没有登记中的实施文档。新任务从 [implementation-plan 样板](../templates/implementation-plan.md) 复制后填写，并在下表登记。
+当前有一条提案中的实施文档。新任务从 [implementation-plan 样板](../templates/implementation-plan.md) 复制后填写，并在下表登记。
 
 | 编号 | 名称 | 状态 | 负责人 | 需求 | 更新时间 |
 |---|---|---|---|---|---|
-|  |  |  |  |  |  |
+| [FEAT-002](FEAT-002-market-center-and-stock-detail.plan.md) | 行情中心与个股详情 | proposed | 待确认 | [FEAT-002](../features/FEAT-002-market-center-and-stock-detail.md) | 2026-11-12 |
 
 ## 模板
 
